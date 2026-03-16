@@ -1,0 +1,3 @@
+https://huggingface.co/datasets/pythainlp/thailaw-v1.0
+https://huggingface.co/datasets/airesearch/WangchanX-Legal-ThaiCCL-RAG
+https://huggingface.co/datasets/VISAI-AI/nitibench
