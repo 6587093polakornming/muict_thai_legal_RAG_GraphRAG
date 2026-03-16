@@ -27,3 +27,23 @@ root-repo/
 ├── pyproject.toml      	# รายชื่อ Library (LangChain, Qdrant-client, etc.) pytome
 └── main.py                 # 
 ```
+
+### Guide Setup Project
+require uv package manager
+
+
+```
+$ git clone https://github.com/6587093polakornming/muict_thai_legal_RAG_GraphRAG.git
+
+$ uv venv
+$ uv sync
+
+[active .venv]
+$ .\.venv\Scripts\activate
+
+[setup dir]
+$ python setup_project_dir.py
+
+[download raw dataset]
+$ python clone_dataset.py
+```
