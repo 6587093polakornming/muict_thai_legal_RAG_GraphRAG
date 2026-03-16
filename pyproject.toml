@@ -5,3 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
+
+[tool.uv.workspace]
+members = [
+    ".",
+]
+
+[tool.uv.sources]
+muict-thai-legal-rag = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "muict-thai-legal-rag",
+]
