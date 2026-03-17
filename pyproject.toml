@@ -15,6 +15,13 @@ members = [
     ".",
 ]
 
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["src"] # บังคับให้มองโฟลเดอร์ src เป็น package หลัก
+
 [tool.uv.sources]
 muict-thai-legal-rag = { workspace = true }
 
