@@ -1,0 +1,4 @@
+*
+!.gitignore
+!source_dataset.txt
+!processed/
