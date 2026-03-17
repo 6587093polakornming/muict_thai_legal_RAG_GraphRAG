@@ -1,0 +1,12 @@
+# 1. Ignore ทุกอย่างใน Root
+/*
+
+# 2. ยกเว้นไฟล์ที่ต้องการ
+!.gitignore
+!source_dataset.txt
+
+# 3. ยกเว้นโฟลเดอร์ processed (ต้องอนุญาตตัวโฟลเดอร์ก่อน)
+!processed/
+
+# 4. (สำคัญ) ถ้าข้างใน processed มีไฟล์ย่อยๆ ต้องสั่งให้ Git "ไม่ ignore" ของข้างในด้วย
+!processed/**
