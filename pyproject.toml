@@ -8,6 +8,14 @@ dependencies = [
     "ipykernel>=7.2.0",
     "pandas>=3.0.1",
     "pyarrow>=23.0.1",
+    "langchain",
+    "langchain-community",
+    "langchain-neo4j",
+    "neo4j",
+    "langchain-openai",
+    "langchain-experimental",
+    "langchain-core",
+    "python-dotenv"
 ]
 
 [tool.uv.workspace]
