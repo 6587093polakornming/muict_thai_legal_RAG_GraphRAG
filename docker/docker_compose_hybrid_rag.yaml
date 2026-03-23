@@ -1,0 +1,13 @@
+version: '3.8'
+name: hybrid-rag  # This defines the project name explicitly
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    container_name: qdrant
+    ports:
+      - "6333:6333" # HTTP REST API
+      - "6334:6334" # gRPC API
+    volumes:
+      # This mounts a local directory to the container's storage path for data persistence
+      - ./qdrant_data:/qdrant/storage 
+    restart: unless-stopped

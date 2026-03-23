@@ -1,0 +1,22 @@
+version: '3.9'
+
+name: graph-rag  # This defines the project name explicitly
+services:
+  neo4j:
+    image: neo4j:5.26.0-community
+    volumes:
+      # Mount the host directories to store logs, config, data, and plugins
+      - $HOME/neo4j/logs:/logs
+      - $HOME/neo4j/config:/config
+      - $HOME/neo4j/data:/data
+      - $HOME/neo4j/plugins:/plugins
+    environment:
+      # Set the initial password for the 'neo4j' user
+      # neo4j = user / simple_password = password
+      - NEO4J_AUTH=neo4j/simple_password
+    ports:
+      # Expose the HTTP (Browser) and Bolt ports to the host
+      # http://localhost:7474/browser/
+      - "7474:7474"
+      - "7687:7687"
+    restart: unless-stopped

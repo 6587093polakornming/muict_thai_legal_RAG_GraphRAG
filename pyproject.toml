@@ -1,10 +1,11 @@
 [project]
 name = "muict-thai-legal-rag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Senior Project: Thai Legal RAG with GraphRAG and Hybrid Search"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
+    "flagembedding>=1.3.5",
     "ipykernel>=7.2.0",
     "langchain>=1.2.12",
     "langchain-community>=0.4.1",
@@ -13,14 +14,13 @@ dependencies = [
     "langchain-neo4j>=0.7.0",
     "langchain-openai>=1.1.11",
     "neo4j>=6.1.0",
-    "pandas>=3.0.1",
+    "pandas>=2.2.0",
     "pyarrow>=23.0.1",
     "python-dotenv>=1.2.2",
-]
-
-[tool.uv.workspace]
-members = [
-    ".",
+    "qdrant-client>=1.17.1",
+    "torch>=2.4.0",
+    "torchvision>=0.25.0",
+    "transformers>=4.44.2,<4.49.0",
 ]
 
 [build-system]
@@ -28,12 +28,21 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["src"] # บังคับให้มองโฟลเดอร์ src เป็น package หลัก
+# แก้ไขตรงนี้: ให้มองโฟลเดอร์ src เป็น package หลัก
+packages = ["src"]
+
+[tool.uv]
+# สำหรับเครื่องมือที่ใช้ตอนพัฒนาเท่านั้น (ไม่ต้องใส่ชื่อโปรเจกต์ตัวเองที่นี่)
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "black>=24.0.0",
+]
 
 [tool.uv.sources]
-muict-thai-legal-rag = { workspace = true }
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
 
-[dependency-groups]
-dev = [
-    "muict-thai-legal-rag",
-]
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
