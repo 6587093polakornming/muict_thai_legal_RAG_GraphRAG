@@ -1,4 +1,4 @@
-version: '3.9'
+version: '3.8'
 
 name: graph-rag  # This defines the project name explicitly
 services:
@@ -6,10 +6,10 @@ services:
     image: neo4j:5.26.0-community
     volumes:
       # Mount the host directories to store logs, config, data, and plugins
-      - $HOME/neo4j/logs:/logs
-      - $HOME/neo4j/config:/config
-      - $HOME/neo4j/data:/data
-      - $HOME/neo4j/plugins:/plugins
+      - ./neo4j/logs:/logs
+      - ./neo4j/config:/config
+      - ./neo4j/data:/data
+      - ./neo4j/plugins:/plugins
     environment:
       # Set the initial password for the 'neo4j' user
       # neo4j = user / simple_password = password
