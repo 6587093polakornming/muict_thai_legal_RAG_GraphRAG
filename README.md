@@ -46,4 +46,8 @@ $ python setup_project_dir.py
 
 [download raw dataset]
 $ python clone_dataset.py
+
+[run docker compose]
+$ cd docker
+$ docker compose -f <filename.yaml> up -d
 ```
