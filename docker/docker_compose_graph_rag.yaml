@@ -7,7 +7,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - C:/Users/guide/.ollama:/root/.ollama
+      - ./ollama_data:/root/.ollama
     # Remove the 'deploy' section below if you DON'T have an NVIDIA GPU
     deploy:
       resources:
