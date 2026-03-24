@@ -2,6 +2,21 @@ version: '3.8'
 
 name: graph-rag  # This defines the project name explicitly
 services:
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - C:/Users/guide/.ollama:/root/.ollama
+    # Remove the 'deploy' section below if you DON'T have an NVIDIA GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   neo4j:
     image: neo4j:5.26.0-community
     volumes:
@@ -10,13 +25,20 @@ services:
       - ./neo4j/config:/config
       - ./neo4j/data:/data
       - ./neo4j/plugins:/plugins
+      - ./neo4j/import:/import
     environment:
       # Set the initial password for the 'neo4j' user
       # neo4j = user / simple_password = password
       - NEO4J_AUTH=neo4j/simple_password
+
+      - NEO4J_PLUGINS=["apoc", "bloom", "graph-data-science", "genai"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
     ports:
       # Expose the HTTP (Browser) and Bolt ports to the host
       # http://localhost:7474/browser/
       - "7474:7474"
+      - "7473:7473"
       - "7687:7687"
     restart: unless-stopped
