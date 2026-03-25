@@ -8,7 +8,6 @@ from __future__ import annotations
 import time
 import os
 import torch
-import os
 from typing import List, Tuple
 
 from FlagEmbedding import FlagReranker, BGEM3FlagModel
@@ -23,6 +22,9 @@ from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 # from langchain_openai import ChatOpenAI  # swap to langchain_anthropic, langchain_google_genai, etc.
 # from langchain_community.chat_models import ChatOllama
 from langchain_openai import ChatOpenAI
+
+from dotenv import load_dotenv
+load_dotenv()  # โหลดค่าจาก .env
 
 
 # ---------------------------------------------------------------------------
