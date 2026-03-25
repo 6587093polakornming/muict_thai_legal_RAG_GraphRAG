@@ -358,7 +358,6 @@ class ThaiLegalRAG:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("test-456")
     # --- Configure your LLM here ---
     # OpenAI
     # llm = ChatOllama(model="gpt-4o-mini", temperature=0)
