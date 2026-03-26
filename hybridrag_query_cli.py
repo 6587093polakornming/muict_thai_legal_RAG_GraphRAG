@@ -17,9 +17,11 @@ FINAL_LIMIT = 3  # top-k returned to LLM
 if __name__ == "__main__":
     # --- Configure your LLM here ---
     llm = ChatOpenAI(
-        model_name="typhoon-v2.5-30b-a3b-instruct",  # หรือรุ่นที่ท่านต้องการใช้
+         model_name="typhoon-v2.5-30b-a3b-instruct",  # หรือรุ่นที่ท่านต้องการใช้
+        # model_name="openai/gpt-4o-mini",  # หรือรุ่นที่ท่านต้องการใช้
         openai_api_key = os.getenv("OPENAI_API_KEY"),
         openai_api_base="https://api.opentyphoon.ai/v1",  # สำคัญ: ใส่แทน base_url เดิม
+        # openai_api_base="https://openrouter.ai/api/v1",  # สำคัญ: ใส่แทน base_url เดิม
         temperature=0,
         max_tokens=4096,
     )
