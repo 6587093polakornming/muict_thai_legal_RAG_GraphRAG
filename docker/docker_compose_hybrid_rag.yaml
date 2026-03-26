@@ -9,5 +9,6 @@ services:
       - "6334:6334" # gRPC API
     volumes:
       # This mounts a local directory to the container's storage path for data persistence
+      # http://localhost:6333/dashboard
       - ./qdrant_data:/qdrant/storage 
     restart: unless-stopped
