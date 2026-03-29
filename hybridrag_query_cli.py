@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()  # โหลดค่าจาก .env
 
 RETRIEVAL_LIMIT = 3  # candidates sent to reranker
-FINAL_LIMIT = 3  # top-k returned to LLM
+# FINAL_LIMIT = 3  # top-k returned to LLM
+RERANK_LIMIT = 3
 
 
 if __name__ == "__main__":
@@ -27,24 +28,17 @@ if __name__ == "__main__":
     )
 
     # --- Build RAG ---
-    rag = ThaiLegalRAG(llm=llm, retrieval_limit=RETRIEVAL_LIMIT, final_limit=FINAL_LIMIT)
+    rag = ThaiLegalRAG(llm=llm, retrieval_limit=RETRIEVAL_LIMIT, reranking_limit=RERANK_LIMIT)
 
     # # --- Simple chat ---
     # question = "ถ้ามีคนประกอบกิจการในลักษณะเป็นศูนย์ซื้อขายสัญญาซื้อขายล่วงหน้าโดยไม่ได้รับใบอนุญาตต้องระวางโทษอย่างไร"
     # answer = rag.chat(question)
     # print(answer)
 
-    # # --- Chat with sources ---
-    # answer, sources = rag.chat_with_sources(question)
-    # print("\n=== Sources ===")
-    # for doc in sources:
-    #     m = doc.metadata
-    #     print(f"  [{m['law_name']} มาตรา {m['section_num']}] score={m['score']:.4f}")
-
-    ### Create Loop input user and Conuting Time
+    ### Create Loop input user and Counting Time
     while True:
         # 1. รับ input จาก user
-        question = input("\nคำถามของคุณ: ").strip()
+        question = input("\nคำถามของคุณ (พิมพ์ 'exit' เพื่อจบการทำงาน): ").strip()
 
         # เช็คเงื่อนไขเพื่อออกจาก Loop
         if question.lower() in ["exit", "quit", "ออก"]:
@@ -54,26 +48,48 @@ if __name__ == "__main__":
         if not question:
             continue
 
-        # 2. เริ่มจับเวลา
-        print("กำลังค้นหาและประมวลผลคำตอบ...")
-        start_time = time.time()
+        print("\n" + "-"*30)
+        print("⌛ กำลังค้นหาและประมวลผลคำตอบ...")
+        print("-"*30)
 
-        # 3. เรียกใช้งาน RAG (ใช้ chat_with_sources เพื่อให้เห็นคะแนนด้วย)
-        answer, sources = rag.chat_with_sources(question)
+        # 2. เรียกใช้งาน RAG ผ่าน debug function
+        debug_result = rag.debug(question)
 
-        # 4. คำนวณเวลาที่ใช้
-        end_time = time.time()
-        elapsed_time = end_time - start_time
+        # 3. ดึงตัวแปรต่างๆ ออกมาใช้งาน
+        answer = debug_result["answer"]
+        docs = debug_result["docs_candidates"]
+        tokens = debug_result["token"]
+        times = debug_result["time_elapsed"]
+        context = debug_result["context"]
 
-        # 5. แสดงผลลัพธ์
-        print("\n=== คำตอบจาก AI ===")
-        print(answer)
+        # 4. แสดงผลลัพธ์หลัก (Answer)
+        print(f"\n💡 คำตอบ:\n{answer}")
 
-        print("\n=== อ้างอิงจากกฎหมาย ===")
-        for doc in sources:
-            print(f"Score: {doc.metadata["score"]:.4f} | {doc.metadata["law_name"]} มาตรา {doc.metadata["section_num"]}")
-            print(doc.page_content)
-            
+        # 5. แสดงสถิติและเวลา (Latency & Stats)
+        print(f"\n⏱️  Latency & Stats:")
+        print(f"   - Retrieval Time: {times['retrieve_time']:.3f} s")
+        print(f"   - LLM Time:       {times['llm_time']:.3f} s")
+        print(f"   - Total Time:     {times['total_elapsed']:.3f} s")
+        print(f"   - Candidates Found: {debug_result['num_candidates']} -> Final Docs: {debug_result['final']}")
 
-        print(f"\n⏱️ ใช้เวลาประมวลผลทั้งสิ้น: {elapsed_time:.2f} วินาที")
-        print("-" * 50)
+        # 6. แสดงข้อมูลการใช้ Token
+        print(f"\n🎫 Token Usage:")
+        print(f"   - Prompt:     {tokens.get('prompt_tokens', 0)}")
+        print(f"   - Completion: {tokens.get('completion_tokens', 0)}")
+        print(f"   - Total:      {tokens.get('total_tokens', 0)}")
+
+        # 7. แสดงรายการกฎหมายที่ใช้อ้างอิง (Sources)
+        print(f"\n📜 แหล่งอ้างอิง (Sources):")
+        for doc in docs:
+            m = doc.metadata
+            print(f"   [{m['rank']}] Score: {m['score']:.4f} | {m['law_name']} มาตรา {m['section_num']}")
+
+        # 8. แสดง Context ที่ส่งให้ LLM (สำหรับ Debug)
+        print(f"\n📝 FULL CONTEXT SENT TO LLM:")
+        print("-" * 60)
+        # แสดง context ทั้งหมด หรือตัดมาเฉพาะบางส่วนถ้ามันยาวเกินไป
+        print(context) 
+        print("-" * 60)
+
+        print("\n" + "="*60)
+        
