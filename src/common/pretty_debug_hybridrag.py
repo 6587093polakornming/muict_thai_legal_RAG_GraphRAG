@@ -1,4 +1,18 @@
 def pretty_print_rag(debug_result:dict):
+        """
+            แสดงผลลัพธ์ของกระบวนการ RAG ให้สวยงามและอ่านง่าย
+            Args:
+                debug_result (dict): Dictionary ที่เก็บข้อมูลการ Debug ประกอบด้วย:
+                    - query (str): คำถามที่ส่งเข้าไป
+                    - num_candidates (int): จำนวน Candidate ที่ค้นหาได้เบื้องต้น
+                    - rerank_candidates (int): จำนวนที่เหลือหลังการ Rerank
+                    - final (int): จำนวนเอกสารสุดท้ายที่ใช้
+                    - docs_candidates (list): รายการเอกสารทั้งหมด
+                    - context (str): เนื้อหาที่ถูกนำไปใส่ใน Prompt
+                    - answer (str): คำตอบจาก LLM
+                    - token (dict): รายละเอียดการใช้ Token
+                    - time_elapsed (float): เวลาที่ใช้ในการประมวลผล
+        """
         # 3. ดึงตัวแปรต่างๆ ออกมาใช้งาน
         answer = debug_result["answer"]
         docs = debug_result["docs_candidates"]
