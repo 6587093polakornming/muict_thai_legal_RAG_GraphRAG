@@ -3,16 +3,11 @@ from typing import List, Tuple
 
 from FlagEmbedding import FlagReranker, BGEM3FlagModel
 from qdrant_client import QdrantClient
+from qdrant_client.http import models
 from qdrant_client.models import SparseVector, Prefetch, Fusion, FusionQuery
 from langchain_core.documents import Document
-
-# ---------------------------------------------------------------------------
-# 1. Configuration
-# ---------------------------------------------------------------------------
-
-COLLECTION_NAME = "thai_laws_collection"
-VECTOR_DENSE = "dense"
-VECTOR_SPARSE = "sparse"
+from typing import Optional
+from .config import RAGConfig # Configuration
 
 
 class HybridRetriever:
@@ -26,19 +21,17 @@ class HybridRetriever:
         embed_model: BGEM3FlagModel,
         reranker: FlagReranker,
         client: QdrantClient,
-        retrieval_limit: int ,
-        final_limit: int ,
+        config: RAGConfig,
     ) -> None:
         self.embed_model = embed_model
         self.reranker = reranker
         self.client = client
-        self.retrieval_limit = retrieval_limit
-        self.final_limit = final_limit
+        self.config = config
+        self.retrieval_limit = config.retrieval_limit
+        self.reranking_limit = config.reranking_limit
+        self.final_limit = config.final_limit
 
-    # ------------------------------------------------------------------
     # Core search logic
-    # ------------------------------------------------------------------
-
     def _encode_query(self, query: str) -> Tuple[list, SparseVector]:
         output = self.embed_model.encode(
             [query],
@@ -56,13 +49,13 @@ class HybridRetriever:
 
     def _hybrid_search(self, dense_vec: list, sparse_vec: SparseVector) -> list:
         return self.client.query_points(
-            collection_name=COLLECTION_NAME,
+            collection_name=self.config.collection_name,
             prefetch=[
                 Prefetch(
-                    query=dense_vec, using=VECTOR_DENSE, limit=self.retrieval_limit
+                    query=dense_vec, using=self.config.vector_dense, limit=self.retrieval_limit
                 ),
                 Prefetch(
-                    query=sparse_vec, using=VECTOR_SPARSE, limit=self.retrieval_limit
+                    query=sparse_vec, using=self.config.vector_sparse, limit=self.retrieval_limit
                 ),
             ],
             query=FusionQuery(fusion=Fusion.RRF),
@@ -78,37 +71,108 @@ class HybridRetriever:
         for i, r in enumerate(candidates):
             r.score = float(scores[i])
         candidates.sort(key=lambda x: x.score, reverse=True)
-        return candidates[: self.final_limit]
+        return candidates[: self.reranking_limit]
 
-    # ------------------------------------------------------------------
+    def _link_ref_law(self, list_pts: list) -> list:
+        """
+        Augment retrieved contexts for Hybrid RAG by injecting related law references.
+
+        This function expands the first retrieved context by fetching its referenced
+        law documents (if any), then reorders all contexts before passing to the LLM.
+
+        Final ordering:
+            [first context] + [its referenced laws] + [remaining contexts]
+
+        Purpose:
+            Enable cross-referencing of relevant legal sections to improve answer generation.
+        """
+        if not list_pts:
+            return []
+
+        first_context = list_pts[0]
+        query_lst = first_context.payload.get("reference_laws", [])
+
+        if not query_lst:
+            return list_pts[: self.final_limit] if self.final_limit else list_pts
+
+        # Filter สำหรับ Batch Query
+        should_conditions = [
+            models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="law_name", match=models.MatchValue(value=ref["law_name"])
+                    ),
+                    models.FieldCondition(
+                        key="section_num",
+                        match=models.MatchValue(value=ref["section_num"]),
+                    ),
+                ]
+            )
+            for ref in query_lst
+        ]
+
+        # ดึงข้อมูลกฎหมายอ้างอิง
+        batch_results, _ = self.client.scroll(
+            collection_name=self.config.collection_name,
+            scroll_filter=models.Filter(should=should_conditions),
+            limit=len(query_lst),
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        # แปลงเป็น ScoredPoint
+        ref_scored_pts = [
+            models.ScoredPoint(
+                id=res.id, payload=res.payload, score=first_context.score, version=0
+            )
+            for res in batch_results
+        ]
+
+        # รวมผลลัพธ์และลบตัวซ้ำ (Deduplicate) โดยใช้ ID เป็น Unique Key
+        seen_ids = {first_context.id}  
+        final_results = [first_context]
+
+        # เพิ่มกฎหมายอ้างอิง (ถ้ายังไม่มีใน list)
+        for pt in ref_scored_pts:
+            if pt.id not in seen_ids:
+                final_results.append(pt)
+                seen_ids.add(pt.id)
+
+        # เพิ่มมาตราอื่น ๆ จากการ Search เดิม (ถ้ายังไม่มีใน list)
+        for pt in list_pts[1:]:
+            if pt.id not in seen_ids:
+                final_results.append(pt)
+                seen_ids.add(pt.id)
+                
+        return final_results
+
     # Public API — returns LangChain Documents
-    # ------------------------------------------------------------------
-
     def retrieve(self, query: str) -> List[Document]:
         dense_vec, sparse_vec = self._encode_query(query)
         candidates = self._hybrid_search(dense_vec, sparse_vec)
         ranked = self._rerank(query, candidates)
+        augmented_context = self._link_ref_law(ranked)
 
         docs = []
-        for r in ranked:
+        for i, r in enumerate(augmented_context, start=1):
             p = r.payload
             docs.append(
                 Document(
                     page_content=p.get("text", ""),
                     metadata={
-                        "law_name": p.get("law_name", ""),
-                        "section_num": p.get("section_num", ""),
+                        "law_name": r.payload.get("law_name", ""),
+                        "section_num": r.payload.get("section_num", ""),
+                        "reference_laws": r.payload.get("reference_laws", []),
+                        "rank": i,
                         "score": r.score,
                     },
                 )
             )
-        return docs
 
-    def retrieve_with_scores(self, query: str):
-        dense_vec, sparse_vec = self._encode_query(query)
-        candidates = self._hybrid_search(dense_vec, sparse_vec)
-        reranked = self._rerank(query, candidates)
-        return candidates, reranked
+        # Final Limit
+        if self.final_limit and self.final_limit > 0:
+            return docs[: self.final_limit]
+        return docs
 
     # LangChain runnable interface
     def __call__(self, query: str) -> List[Document]:
