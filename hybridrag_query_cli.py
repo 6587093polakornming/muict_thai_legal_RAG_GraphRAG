@@ -23,7 +23,7 @@ if __name__ == "__main__":
         openai_api_base="https://api.opentyphoon.ai/v1",  # สำคัญ: ใส่แทน base_url เดิม
         # openai_api_base="https://openrouter.ai/api/v1",  # สำคัญ: ใส่แทน base_url เดิม
         temperature=0,
-        max_tokens=8192,
+        max_tokens=23114,
     )
 
     # --- Build RAG ---
