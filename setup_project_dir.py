@@ -6,13 +6,13 @@ def create_project_structure():
     structure = [
         "data/raw",
         "data/processed",
+        "data/tests",
         "docker",
         "notebooks",
         "src/common",
         "src/rag",
         "src/graph_rag",
         "src/evaluation",
-        "tests",
     ]
 
     print("🚀 Starting project folder setup...")
