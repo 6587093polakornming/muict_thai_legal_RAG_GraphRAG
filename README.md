@@ -36,7 +36,7 @@ require uv package manager
 $ git clone https://github.com/6587093polakornming/muict_thai_legal_RAG_GraphRAG.git
 
 $ uv venv
-$ uv sync
+$ uv sync --frozen (need uv.lock)
 
 [active .venv]
 $ .\.venv\Scripts\activate
@@ -50,4 +50,10 @@ $ python clone_dataset.py
 [run docker compose]
 $ cd docker
 $ docker compose -f <filename.yaml> up -d
+
+[update dependencies]
+$ uv add <dependencies>
+$ uv lock (generate new uv lock)
+
+$ uv sync --frozen
 ```

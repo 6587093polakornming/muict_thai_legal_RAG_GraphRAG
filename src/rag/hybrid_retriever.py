@@ -93,7 +93,7 @@ class HybridRetriever:
         query_lst = first_context.payload.get("reference_laws", [])
 
         if not query_lst:
-            return list_pts[: self.final_limit] if self.final_limit else list_pts
+            return list_pts
 
         # Filter สำหรับ Batch Query
         should_conditions = [
