@@ -1,7 +1,11 @@
 # Thai Legal RAG — Evaluation Plan & Implementation Guide
-!!! TODO ขาด MultiRate ยังไม่ถูกต้อง ต้องแก้ไข
-MRR เพิ่ม Metrics ตัวนี้
+!!! TODO 
 อันนี้เป็น Draft
+แก้ไขให้ eval runner.py ทำงานได้ทั้ง rag สองแบบ
+แก้ไข eval metrics.py ให้ความหมายและ process ถูกต้อง
+- ขาด MultiRate ยังไม่ถูกต้อง ต้องแก้ไข
+- MRR เพิ่ม Metrics ตัวนี้
+- ลบ Exact Match ออก
 
 ## 1. ภาพรวมโปรเจกต์
 
