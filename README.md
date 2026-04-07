@@ -56,4 +56,18 @@ $ uv add <dependencies>
 $ uv lock (generate new uv lock)
 
 $ uv sync --frozen
+
+[Evaluation Metric]
+
+eval_runner.py — Step 1 รัน RAG แล้วเก็บผลเป็น JSONL ต่อ row มี checkpoint/resume ในตัว วิธีใช้คือ implement GraphRAGAdapter ให้ครบก่อน แล้วรัน
+
+$ python eval_runner.py --system hybrid --output results_hybrid.jsonl
+$ python eval_runner.py --system graph  --output results_graph.jsonl
+
+eval_metrics.py — Step 2 โหลด JSONL แล้วคำนวณ metrics ทั้ง Retrieval + Generation Layer ได้ทีเดียว
+
+$ python eval_metrics.py \
+   --input results_hybrid.jsonl results_graph.jsonl \
+   --bertscore-model VISAI-AI/nitibench-ccl-human-finetuned-bge-m3
+
 ```
