@@ -241,6 +241,14 @@ def evaluate(
             "rag_answer":          rec["rag_answer"],
             "gt_reference_answer": rec["gt_reference_answer"],
             "gt_answer":           rec["gt_answer"],
+            # TODO token metadata
+            "prompt_tokens":       rec["prompt_tokens"],
+            "completion_tokens":   rec["completion_tokens"],
+            "total_tokens":        rec["total_tokens"],
+            # TODO time metadata
+            "retrieve_time":       rec["retrieve_time"],
+            "llm_time":            rec["llm_time"],
+            "total_elapsed":       rec["total_elapsed"],
             **ret,
         })
     df = pd.DataFrame(rows)
@@ -295,6 +303,14 @@ def summarise(df: pd.DataFrame) -> pd.DataFrame:
         "rouge1_recall",
         "rougeL_recall",
         "bertscore_recall",
+        # TODO token metadata
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        # TODO time metadata
+        "retrieve_time",
+        "llm_time",
+        "total_elapsed",
     ]
 
     summary_rows = []
