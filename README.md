@@ -62,15 +62,20 @@ $ uv sync --frozen
 
 eval_runner.py — Step 1 รัน RAG แล้วเก็บผลเป็น JSONL ต่อ row มี checkpoint/resume ในตัว วิธีใช้คือ implement GraphRAGAdapter ให้ครบก่อน แล้วรัน
 
-$ python eval_runner.py --system hybrid --dataset data/tests/test_dataset_2026-04-01_filter.parquet --output results_hybrid.jsonl --sleep 0.0
+$ python eval_runner.py 
+    --system hybrid 
+    --dataset data/tests/test_dataset_2026-04-01_filter.parquet 
+    --output data/evaluation/results_hybrid.jsonl 
+    --sleep 0.0
 
-$ python eval_runner.py --system hybrid (แบบย่อใช้ default augment)
+$ python eval_runner.py 
+    --system hybrid (แบบย่อใช้ default augment)
 
 eval_metrics.py — Step 2 โหลด JSONL แล้วคำนวณ metrics ทั้ง Retrieval + Generation Layer ได้ทีเดียว
 
 $ python eval_metrics.py 
- --input data/evaluation/results_hybrid.jsonl
- --output data/evaluation/eval_results.csv
- --summary data/evaluation/eval_summary.csv
+    --input data/evaluation/results_hybrid.jsonl 
+    --output data/evaluation/eval_hybrid_results.csv 
+    --summary data/evaluation/eval_hybrid_summary.csv
 
 ```
