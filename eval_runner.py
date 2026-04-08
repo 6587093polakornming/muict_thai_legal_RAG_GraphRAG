@@ -80,15 +80,49 @@ class GraphRAGAdapter(RAGAdapter):
     name = "graph"
 
     def __init__(self):
-        # TODO: import and initialise your GraphRAG here
-        # from src.rag.graphrag_langchain import ThaiLegalGraphRAG
-        # self.rag = ThaiLegalGraphRAG(...)
-        raise NotImplementedError("GraphRAG adapter not yet wired up")
+        from src.graph_rag.graphrag_retriever import LegalRetriever
+        self.retriever = LegalRetriever()
 
     def chat_with_sources(self, query: str):
-        return self.rag.chat_with_sources(query)
+        from langchain_core.documents import Document
 
+        retriever = self.retriever.get_retriever()
+        retrieved_docs = retriever.search(query_text=query, top_k=5)
+        rag_response = self.retriever.search(query)
 
+        docs = []
+        rank = 1
+        for item in retrieved_docs.items:
+            meta = item.metadata or {}
+
+            # Parent doc — score is a top-level attribute on RetrieverResultItem
+            docs.append(Document(
+                page_content=item.content,
+                metadata={
+                    "law_name":    meta.get("parent_law_name", ""),
+                    "section_num": str(meta.get("parent_section_num", "")),
+                    "rank":        rank,
+                    "score":       float(getattr(item, "score", 0.0)),
+                }
+            ))
+            rank += 1
+
+            # Children docs
+            for child in meta.get("children", []):
+                if not child.get("law_name") or not child.get("section_num"):
+                    continue
+                docs.append(Document(
+                    page_content=child.get("text", ""),
+                    metadata={
+                        "law_name":    child["law_name"],
+                        "section_num": str(child["section_num"]),
+                        "rank":        rank,
+                        "score":       0.0,
+                    }
+                ))
+                rank += 1
+
+        return rag_response.answer, docs
 # ---------------------------------------------------------------------------
 # Helper: serialise retrieved docs (only metadata, not full page_content)
 # ---------------------------------------------------------------------------
