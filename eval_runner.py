@@ -32,17 +32,24 @@ from tqdm import tqdm
 class RAGAdapter:
     """
     Base class. Subclass this for HybridRAG and GraphRAG.
-    Must implement: chat_with_sources(query) -> (answer: str, docs: list)
+    Must implement: debug(query) -> (answer: str, docs: list, token: dict, time_elapsed: dict)
     """
     name: str = "base"
 
-    def chat_with_sources(self, query: str):
+    # TODO change method to debug()
+    def debug(self, query: str):
         """
         Returns:
             answer (str)  — LLM-generated answer
             docs   (list) — list of LangChain Document objects with metadata:
-                            { law_name, section_num, rank, score }
+                            { law_name, section_num } 
+            token (dict) — token usage from LLM callabck metadata:
+                            {prompt_tokens, completion_tokens, total_tokens}
+            time_elapsed (dict) -time Latency metadata:
+                            {retrieve_time, llm_time, total_elapsed}
+            
         """
+        # TODO Exclude rank and score (because score is from reranking and rank is not use.)
         raise NotImplementedError
 
 
@@ -71,8 +78,18 @@ class HybridRAGAdapter(RAGAdapter):
         config = RAGConfig(retrieval_limit=3, reranking_limit=3)
         self.rag = ThaiLegalRAG(llm=llm, config=config)
 
-    def chat_with_sources(self, query: str):
-        return self.rag.chat_with_sources(query)
+        # TODO simple handle cold start
+        test_query = "ถ้ามีคนประกอบกิจการในลักษณะเป็นศูนย์ซื้อขายสัญญาซื้อขายล่วงหน้าโดยไม่ได้รับใบอนุญาตต้องระวางโทษอย่างไร"
+        self.rag.debug(test_query)
+
+    # TODO change method to debug()
+    def debug(self, query: str):
+        results = self.rag.debug(query)
+        answer:str = results.get("answer")
+        docs:list = results.get("docs_candidates")
+        token:dict = results.get("token")
+        time_elapsed:dict = results.get("time_elapsed")
+        return answer, docs, token, time_elapsed
 
 
 class GraphRAGAdapter(RAGAdapter):
@@ -85,8 +102,8 @@ class GraphRAGAdapter(RAGAdapter):
         # self.rag = ThaiLegalGraphRAG(...)
         raise NotImplementedError("GraphRAG adapter not yet wired up")
 
-    def chat_with_sources(self, query: str):
-        return self.rag.chat_with_sources(query)
+    def debug(self, query: str):
+        return self.rag.debug(query)
 
 
 # ---------------------------------------------------------------------------
@@ -104,8 +121,9 @@ def _serialise_docs(docs) -> list[dict]:
         result.append({
             "law_name":   meta.get("law_name", ""),
             "section_num": str(meta.get("section_num", "")),
-            "rank":        meta.get("rank", -1),
-            "score":       float(meta.get("score", 0.0)),
+            # TODO remove rank and score
+            # "rank":        meta.get("rank", -1),
+            # "score":       float(meta.get("score", 0.0)),
         })
     return result
 
@@ -118,7 +136,7 @@ def run_evaluation(
     adapter: RAGAdapter,
     dataset_path: str,
     output_path: str,
-    sleep_sec: float = 0.5,
+    sleep_sec: float = 0.0,
 ):
     """
     Iterate over every row in the test dataset, call the RAG system,
@@ -151,7 +169,7 @@ def run_evaluation(
             question = row["question"]
 
             try:
-                answer, docs = adapter.chat_with_sources(question)
+                answer, docs, token, time_elapsed = adapter.debug(question)
             except Exception as e:
                 # log error but continue so one bad row doesn't kill the run
                 print(f"\n[ERROR] row {idx}: {e}")
@@ -177,6 +195,14 @@ def run_evaluation(
                 # RAG output
                 "rag_answer":       answer,
                 "retrieved_docs":   _serialise_docs(docs),
+                # TODO add token and time_elapsed metadata 
+                "prompt_tokens":    token.get("prompt_tokens",0),
+                "completion_tokens":    token.get("completion_tokens",0),
+                "total_tokens":    token.get("total_tokens",0),
+
+                "retrieve_time": time_elapsed.get("retrieve_time", 0.0),
+                "llm_time": time_elapsed.get("llm_time", 0.0),
+                "total_elapsed": time_elapsed.get("total_elapsed", 0.0),
             }
 
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
