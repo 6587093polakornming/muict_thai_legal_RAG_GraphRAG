@@ -4,28 +4,29 @@
 # Repository structure
 ```
 root-repo/
-├── data/                   
+├── data/                    
 │   ├── raw/                # ไฟล์ Dataset กฎหมายไทยต้นฉบับ 
-│   └── processed/          # ไฟล์ Markdown/JSON ที่ผ่านการ Chunking แล้ว 
-├── docker/                 # สำหรับรัน Qdrant, Neo4j, Langfuse 
-│   └── docker-compose.yml  
-├── notebooks/              # สำหรับ EDA และทดลอง Prompt
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_rag_prototype.ipynb
-│   └── 03_graph_extraction_test.ipynb
-├── src/                    # Source Code หลัก
-│   ├── common/             # โค้ดที่ใช้ร่วมกัน เช่น Embedding Model (BGE-M3/E5), Logging
-│   ├── rag/                # RAG Pipeline (Baseline) 
-│   │   ├── ingest.py       # นำข้อมูลเข้า Qdrant 
-│   │   └── retriever.py    # ระบบค้นหาแบบ Vector Search
-│   ├── graph_rag/          # GraphRAG Pipeline (Proposed) 
-│   │   ├── extractor.py    # สกัด Entity/Relation เข้า Neo4j 
-│   │   └── search.py       # Local/Global Search Engine 
-│   └── evaluation/         # ระบบวัดผล RAGAS / MLflow  
-├── tests/                  # สำหรับเก็บชุดคำถามทดสอบ (Test Sets)
-├── .env                    # เก็บ API Keys (OpenAI, Langfuse, Neo4j)
-├── pyproject.toml      	# รายชื่อ Library (LangChain, Qdrant-client, etc.) pytome
-└── main.py                 # 
+│   ├── processed/          # ข้อมูลที่ผ่านการ Transform, Cleansing และ Chunking แล้ว
+│   └── tests/              # ชุดคำถาม-คำตอบ (Ground Truth) สำหรับทำ Evaluation
+├── docker/                 # Infrastructure Stack
+│   └── docker-compose.yml  # สำหรับรัน Qdrant, Neo4j และ Tool อื่นๆ
+├── notebooks/              # Sandbox สำหรับ EDA, ทดลอง Prompt และ Tutorial
+│   ├── data_prep_nititbench.ipynb
+│   ├── indexing_rag_tutorial.ipynb
+│   └── graph_extraction_test.ipynb
+├── src/                    # หัวใจหลักของ Logic (Focus on Querying)
+│   ├── common/             # Helpers/Plugins เช่น Thai Tokenizer, Custom Embedding Class
+│   ├── rag/                # Standard Vector RAG Pipeline
+│   │   └── retriever.py    # Logic การค้นหาและดึงข้อมูลจาก Vector DB
+│   ├── graph_rag/          # Graph-based RAG Pipeline
+│   │   └── retriever.py    # Logic การค้นหาแบบ Traverse ผ่าน Nodes/Edges
+│   └── evaluation/         # เก็บผลลัพธ์การทดลอง (CSV, JSONLs)
+├── .env                    # Environment Variables (Secrets & Configs)
+├── pyproject.toml          # จัดการ Library ด้วย uv (รองรับการทำ Reproducible Build)
+├── main.py                 # Entry point สำหรับ Web API (FastAPI) หรือ App หลัก
+├── embedding_rag.py        # Script หลักสำหรับสร้าง Vector Index (Ingestion)
+└── hybridrag_query_cli.py  # Interface สำหรับทดสอบ Query ผ่าน Command Line
+...
 ```
 
 ### Guide Setup Project
