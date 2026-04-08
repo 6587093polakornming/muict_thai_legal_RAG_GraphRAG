@@ -13,3 +13,5 @@
 
 !tests/
 !tests/**
+!evaluation/
+!evaluation/**

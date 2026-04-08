@@ -66,7 +66,7 @@ class HybridRAGAdapter(RAGAdapter):
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_api_base="https://api.opentyphoon.ai/v1",
             temperature=0,
-            max_tokens=1024,
+            max_tokens=23113,
         )
         config = RAGConfig(retrieval_limit=3, reranking_limit=3)
         self.rag = ThaiLegalRAG(llm=llm, config=config)
@@ -194,14 +194,14 @@ def run_evaluation(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run RAG evaluation")
     parser.add_argument("--system",   choices=["hybrid", "graph"], required=True)
-    parser.add_argument("--dataset",  default="test_dataset_2026-04-01.parquet")
+    parser.add_argument("--dataset",  default="data/tests/test_dataset_2026-04-01_filter.parquet")
     parser.add_argument("--output",   default=None)
-    parser.add_argument("--sleep",    type=float, default=0.5,
+    parser.add_argument("--sleep",    type=float, default=0.0,
                         help="Seconds to sleep between API calls (rate-limit buffer)")
     args = parser.parse_args()
 
     if args.output is None:
-        args.output = f"results_{args.system}.jsonl"
+        args.output = "data/evaluation/"+f"results_{args.system}.jsonl"
 
     if args.system == "hybrid":
         adapter = HybridRAGAdapter()
