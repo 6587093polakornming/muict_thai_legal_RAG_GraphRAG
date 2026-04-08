@@ -184,6 +184,7 @@ def compute_bertscore(
     BERTScorer = _get_bertscore()
     scorer = BERTScorer(
         model_type=model_type,
+        num_layers=24,  # เพิ่มบรรทัดนี้เพื่อบอกจำนวน Layer ให้มันรู้
         lang="th",
         rescale_with_baseline=False,
         batch_size=batch_size,
@@ -315,9 +316,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute RAG evaluation metrics")
     parser.add_argument("--input",   nargs="+", required=True,
                         help="One or more JSONL result files")
-    parser.add_argument("--output",  default="eval_results.csv",
+    parser.add_argument("--output",  default="data/evaluation/eval_results.csv",
                         help="Path to save per-row results CSV")
-    parser.add_argument("--summary", default="eval_summary.csv",
+    parser.add_argument("--summary", default="data/evaluation/eval_summary.csv",
                         help="Path to save aggregated summary CSV")
     parser.add_argument("--bertscore-model",
                         default="VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
