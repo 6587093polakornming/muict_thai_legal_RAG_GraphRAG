@@ -12,7 +12,7 @@ def create_project_structure():
         "src/common",
         "src/rag",
         "src/graph_rag",
-        "src/evaluation",
+        "data/evaluation",
     ]
 
     print("🚀 Starting project folder setup...")

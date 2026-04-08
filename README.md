@@ -4,28 +4,29 @@
 # Repository structure
 ```
 root-repo/
-├── data/                   
+├── data/                    
 │   ├── raw/                # ไฟล์ Dataset กฎหมายไทยต้นฉบับ 
-│   └── processed/          # ไฟล์ Markdown/JSON ที่ผ่านการ Chunking แล้ว 
-├── docker/                 # สำหรับรัน Qdrant, Neo4j, Langfuse 
-│   └── docker-compose.yml  
-├── notebooks/              # สำหรับ EDA และทดลอง Prompt
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_rag_prototype.ipynb
-│   └── 03_graph_extraction_test.ipynb
-├── src/                    # Source Code หลัก
-│   ├── common/             # โค้ดที่ใช้ร่วมกัน เช่น Embedding Model (BGE-M3/E5), Logging
-│   ├── rag/                # RAG Pipeline (Baseline) 
-│   │   ├── ingest.py       # นำข้อมูลเข้า Qdrant 
-│   │   └── retriever.py    # ระบบค้นหาแบบ Vector Search
-│   ├── graph_rag/          # GraphRAG Pipeline (Proposed) 
-│   │   ├── extractor.py    # สกัด Entity/Relation เข้า Neo4j 
-│   │   └── search.py       # Local/Global Search Engine 
-│   └── evaluation/         # ระบบวัดผล RAGAS / MLflow  
-├── tests/                  # สำหรับเก็บชุดคำถามทดสอบ (Test Sets)
-├── .env                    # เก็บ API Keys (OpenAI, Langfuse, Neo4j)
-├── pyproject.toml      	# รายชื่อ Library (LangChain, Qdrant-client, etc.) pytome
-└── main.py                 # 
+│   ├── processed/          # ข้อมูลที่ผ่านการ Transform, Cleansing และ Chunking แล้ว
+│   ├── tests/              # ชุดคำถาม-คำตอบ (Ground Truth) สำหรับทำ Evaluation
+│   └── evaluation/         # [UPDATED] เก็บผลลัพธ์การทดลอง (CSV, JSONLs, Metrics)
+├── docker/                 # Infrastructure Stack
+│   └── docker-compose.yml  # สำหรับรัน Qdrant, Neo4j และ Tool อื่นๆ
+├── notebooks/              # Sandbox สำหรับ EDA, ทดลอง Prompt และ Tutorial
+│   ├── data_prep_nititbench.ipynb
+│   ├── indexing_rag_tutorial.ipynb
+│   └── graph_extraction_test.ipynb
+├── src/                    # หัวใจหลักของ Logic
+│   ├── common/             # Helpers เช่น Thai Tokenizer, Custom Embedding Class
+│   ├── rag/                # Standard Vector RAG Pipeline
+│   │   └── retriever.py    # Logic การค้นหาและดึงข้อมูลจาก Vector DB
+│   └── graph_rag/          # Graph-based RAG Pipeline
+│       └── retriever.py    # Logic การค้นหาแบบ Traverse ผ่าน Nodes/Edges
+├── .env                    # Environment Variables (Secrets & Configs)
+├── pyproject.toml          # จัดการ Library ด้วย uv
+├── main.py                 # Entry point สำหรับ Web API (FastAPI)
+├── embedding_rag.py        # Script หลักสำหรับสร้าง Vector Index (Ingestion)
+└── hybridrag_query_cli.py  # Interface สำหรับทดสอบ Query ผ่าน CLI
+...
 ```
 
 ### Guide Setup Project
@@ -61,13 +62,15 @@ $ uv sync --frozen
 
 eval_runner.py — Step 1 รัน RAG แล้วเก็บผลเป็น JSONL ต่อ row มี checkpoint/resume ในตัว วิธีใช้คือ implement GraphRAGAdapter ให้ครบก่อน แล้วรัน
 
-$ python eval_runner.py --system hybrid --output results_hybrid.jsonl
-$ python eval_runner.py --system graph  --output results_graph.jsonl
+$ python eval_runner.py --system hybrid --dataset data/tests/test_dataset_2026-04-01_filter.parquet --output results_hybrid.jsonl --sleep 0.0
+
+$ python eval_runner.py --system hybrid (แบบย่อใช้ default augment)
 
 eval_metrics.py — Step 2 โหลด JSONL แล้วคำนวณ metrics ทั้ง Retrieval + Generation Layer ได้ทีเดียว
 
-$ python eval_metrics.py \
-   --input results_hybrid.jsonl results_graph.jsonl \
-   --bertscore-model VISAI-AI/nitibench-ccl-human-finetuned-bge-m3
+$ python eval_metrics.py 
+ --input data/evaluation/results_hybrid.jsonl
+ --output data/evaluation/eval_results.csv
+ --summary data/evaluation/eval_summary.csv
 
 ```

@@ -8,20 +8,22 @@ Usage:
     python eval_metrics.py --input results_hybrid.jsonl
 
     # Compare two systems
-    python eval_metrics.py --input results_hybrid.jsonl results_graph.jsonl --compare
+    python eval_metrics.py --input results_hybrid.jsonl results_graph.jsonl
 
 Metrics computed:
     Retrieval Layer
-        - Top-1 Accuracy      : relevant_laws[0] == retrieved_docs[0]
-        - Hit Rate (Recall@K) : relevant_laws[0] in retrieved_docs (any rank)
-        - Multi-Hit Rate      : fraction of reference_laws found in retrieved_docs ???
-        - MRR                 : 1 / rank of first relevant_laws[0] found 
+        T_main = relevant_laws only (1 entry per QA)
+        T_full = relevant_laws + reference_laws
+
+        - HitRate@k       (T_full) : มี doc ถูกต้องอย่างน้อย 1 ตัวใน retrieved ไหม
+        - Multi-HitRate@k (T_full) : ทุก doc ใน T_full อยู่ใน retrieved ไหม (all-or-nothing)
+        - Recall@k        (T_full) : สัดส่วนของ T_full ที่ดึงมาได้
+        - MRR@k           (T_main) : 1 / rank ของมาตราหลัก (relevant_laws)
 
     Generation Layer
-        - Exact Match         : rag_answer == gt_reference_answer (normalised)
-        - ROUGE-1 Recall      : unigram recall vs gt_reference_answer
-        - ROUGE-L Recall      : LCS recall vs gt_reference_answer
-        - BERTScore Recall    : semantic recall vs gt_answer (expert version)
+        - ROUGE-1 Recall   : unigram recall vs gt_reference_answer
+        - ROUGE-L Recall   : LCS recall vs gt_reference_answer
+        - BERTScore Recall : semantic recall vs gt_answer (expert version)
 
 Requirements:
     pip install rouge-score bert-score pandas tqdm
@@ -58,59 +60,69 @@ def _get_bertscore():
 
 
 # ---------------------------------------------------------------------------
-# Normalisation helpers
-# ---------------------------------------------------------------------------
-
-def _normalise(text: str) -> str:
-    """Strip whitespace and collapse multiple spaces."""
-    return " ".join(text.strip().split())
-
-
-# ---------------------------------------------------------------------------
 # Retrieval metrics (per row)
 # ---------------------------------------------------------------------------
 
 def compute_retrieval_metrics(record: dict) -> dict:
     """
-    Returns a dict with retrieval metric values for a single record.
+    Compute all retrieval metrics for a single record.
 
-    Key definitions
-    ---------------
-    gt_main   : (law_name, section_num) of the single relevant_laws entry
-    retrieved : ordered list of (law_name, section_num) from retrieved_docs
-    gt_refs   : set of (law_name, section_num) from reference_laws
+    Ground Truth definitions
+    ------------------------
+    T_main : (law_name, section_num) จาก relevant_laws[0]
+             → ใช้กับ MRR เท่านั้น (single-label)
+
+    T_full : set ของ (law_name, section_num) จาก relevant_laws + reference_laws
+             → ใช้กับ HitRate, Multi-HitRate, Recall (multi-label)
+
+    Metric definitions
+    ------------------
+    HitRate       : I(T_full ∩ retrieved ≠ ∅)          → 0 หรือ 1
+    Multi-HitRate : I(T_full ⊆ retrieved)               → 0 หรือ 1  (all-or-nothing)
+    Recall        : |T_full ∩ retrieved| / |T_full|     → 0.0–1.0   (partial credit)
+    MRR           : 1 / rank(T_main in retrieved)       → 0.0–1.0
+
+    Note: rows ที่ไม่มี reference_laws จะมี T_full = T_main (1 ตัว)
+          ซึ่งทำให้ HitRate = Multi-HitRate = Recall สำหรับ row นั้น
     """
+    # retrieved: ordered list ตาม rank จาก RAG
     retrieved = [
         (d["law_name"], str(d["section_num"]))
         for d in record["retrieved_docs"]
     ]
     retrieved_set = set(retrieved)
 
+    # T_main — single label (relevant_laws เสมอมีแค่ 1 ตัว)
     gt_relevant = record["gt_relevant_laws"]
-    gt_refs     = record["gt_reference_laws"]
-
-    # --- Top-1 Accuracy ---
-    # relevant_laws always has exactly 1 entry (confirmed from dataset analysis)
     gt_main = (gt_relevant[0]["law_name"], str(gt_relevant[0]["section_num"]))
-    top1_acc = int(bool(retrieved) and retrieved[0] == gt_main)
 
-    # --- Hit Rate (Recall@K) ---
-    # Is the main relevant law anywhere in the retrieved set?
-    hit_rate = int(gt_main in retrieved_set)
+    # T_full — multi label (relevant + reference)
+    gt_refs = record["gt_reference_laws"]
+    gt_full = {(r["law_name"], str(r["section_num"])) for r in gt_relevant + gt_refs}
 
-    # --- Multi-Hit Rate ---
-    # What fraction of reference_laws appear in retrieved_docs?
-    # Rows with no reference_laws are excluded from the average (return None)
-    if gt_refs:
-        gt_ref_set = {(r["law_name"], str(r["section_num"])) for r in gt_refs}
-        multi_hit = len(gt_ref_set & retrieved_set) / len(gt_ref_set)
-    else:
-        multi_hit = None  # excluded from aggregate
+    # ------------------------------------------------------------------
+    # HitRate (T_full) — มี doc ถูกต้องอย่างน้อย 1 ตัวใน retrieved ไหม
+    # I(T_full ∩ retrieved ≠ ∅)
+    # ------------------------------------------------------------------
+    hit_rate = int(bool(gt_full & retrieved_set))
 
-    # TODO เพิ่ม MRR 
-    # --- MRR ---
-    # --- MRR ---
-    # Reciprocal Rank of the FIRST correct main relevant law
+    # ------------------------------------------------------------------
+    # Multi-HitRate (T_full) — ทุก doc ใน T_full อยู่ใน retrieved ไหม
+    # I(T_full ⊆ retrieved)  → all-or-nothing, ขาดแม้แค่ตัวเดียว = 0
+    # ------------------------------------------------------------------
+    multi_hit_rate = int(gt_full.issubset(retrieved_set))
+
+    # ------------------------------------------------------------------
+    # Recall (T_full) — สัดส่วนของ T_full ที่ดึงมาได้
+    # |T_full ∩ retrieved| / |T_full|  → partial credit
+    # ------------------------------------------------------------------
+    recall = len(gt_full & retrieved_set) / len(gt_full)
+
+    # ------------------------------------------------------------------
+    # MRR (T_main) — คุณภาพ ranking ของมาตราหลัก
+    # 1 / rank ของ T_main ใน retrieved (rank เริ่มที่ 1)
+    # ถ้าไม่พบเลย → 0.0
+    # ------------------------------------------------------------------
     mrr = 0.0
     for i, doc in enumerate(retrieved):
         if doc == gt_main:
@@ -118,10 +130,10 @@ def compute_retrieval_metrics(record: dict) -> dict:
             break
 
     return {
-        "top1_acc":   top1_acc,
-        "hit_rate":   hit_rate,
-        "multi_hit":  multi_hit,
-        "mrr":        mrr,
+        "hit_rate":       hit_rate,
+        "multi_hit_rate": multi_hit_rate,
+        "recall":         recall,
+        "mrr":            mrr,
     }
 
 
@@ -129,21 +141,17 @@ def compute_retrieval_metrics(record: dict) -> dict:
 # Generation metrics (batch, for efficiency)
 # ---------------------------------------------------------------------------
 
-def compute_exact_match(predictions: list[str], references: list[str]) -> list[int]:
-    """Exact match after normalisation."""
-    return [
-        int(_normalise(p) == _normalise(r))
-        for p, r in zip(predictions, references)
-    ]
-
-
 def compute_rouge(
     predictions: list[str],
     references: list[str],
 ) -> tuple[list[float], list[float]]:
     """
-    Returns (rouge1_recall_scores, rougeL_recall_scores).
-    Uses Recall only — because RAG answers are longer than GT.
+    Compute ROUGE-1 Recall and ROUGE-L Recall.
+
+    ใช้ Recall ไม่ใช่ F1 เพราะ RAG answer ยาวกว่า GT เสมอ
+    Recall วัดว่า GT ถูก "ครอบคลุม" โดย answer มากแค่ไหน
+
+    Returns: (rouge1_recall_list, rougeL_recall_list)
     """
     rouge_scorer = _get_rouge()
     scorer = rouge_scorer.RougeScorer(["rouge1", "rougeL"], use_stemmer=False)
@@ -158,52 +166,57 @@ def compute_rouge(
 def compute_bertscore(
     predictions: list[str],
     references: list[str],
-    model_type: str = "microsoft/mdeberta-v3-base",
+    model_type: str = "VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
     batch_size: int = 16,
 ) -> list[float]:
     """
-    BERTScore Recall — semantic coverage of expert answer by RAG answer.
+    Compute BERTScore Recall.
 
-    Default model: mdeberta-v3-base (multilingual, good Thai support).
-    Alternative:   VISAI-AI/nitibench-ccl-human-finetuned-bge-m3
-                   (same embed model as the RAG pipeline, domain-tuned on CCL)
+    วัด semantic coverage ของ expert answer (gt_answer) โดย RAG answer
+    ใช้ Recall เพราะต้องการวัดว่า expert answer ถูกครอบคลุมแค่ไหน
 
-    Returns list of per-sample recall scores.
+    Model แนะนำ: VISAI-AI/nitibench-ccl-human-finetuned-bge-m3
+                 (domain-tuned บน CCL, ตรง domain กับโปรเจกต์)
+    Fallback:    microsoft/mdeberta-v3-base (multilingual)
+
+    Returns: list of per-sample BERTScore Recall
     """
     BERTScorer = _get_bertscore()
     scorer = BERTScorer(
         model_type=model_type,
+        num_layers=24,  # เพิ่มบรรทัดนี้เพื่อบอกจำนวน Layer ให้มันรู้
         lang="th",
         rescale_with_baseline=False,
         batch_size=batch_size,
     )
-    # bert_score returns (P, R, F1) tensors
+    # bert_score returns (Precision, Recall, F1) tensors
     _, R, _ = scorer.score(cands=predictions, refs=references)
     return R.tolist()
 
 
 # ---------------------------------------------------------------------------
-# Aggregate a list of scores (skip None values)
+# Aggregate helpers
 # ---------------------------------------------------------------------------
 
 def _mean(values: list) -> float | None:
+    """Mean ของ list โดย skip ค่า None"""
     valid = [v for v in values if v is not None]
     return sum(valid) / len(valid) if valid else None
 
 
 # ---------------------------------------------------------------------------
-# Full pipeline: load JSONL → compute all metrics → return DataFrame
+# Full pipeline: load JSONL → compute metrics → return DataFrame
 # ---------------------------------------------------------------------------
 
 def evaluate(
     jsonl_path: str,
-    bertscore_model: str = "microsoft/mdeberta-v3-base",
+    bertscore_model: str = "VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
     bertscore_batch: int = 16,
     skip_bertscore: bool = False,
 ) -> pd.DataFrame:
     """
-    Load a JSONL result file and compute all metrics.
-    Returns a per-row DataFrame with all metric columns.
+    Load JSONL result file และ compute metrics ทุกตัว
+    Returns per-row DataFrame
     """
     records = []
     with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -217,37 +230,33 @@ def evaluate(
 
     print(f"[evaluate] loaded {len(records)} records from {jsonl_path}")
 
-    # ---- Retrieval metrics (per-row, no batching needed) ----
+    # ---- Retrieval metrics (per-row) ----
     rows = []
     for rec in tqdm(records, desc="retrieval metrics"):
         ret = compute_retrieval_metrics(rec)
         rows.append({
-            "id":       rec["id"],
-            "system":   rec["system"],
-            "question": rec["question"],
-            "rag_answer": rec["rag_answer"],
+            "id":                  rec["id"],
+            "system":              rec["system"],
+            "question":            rec["question"],
+            "rag_answer":          rec["rag_answer"],
             "gt_reference_answer": rec["gt_reference_answer"],
-            "gt_answer": rec["gt_answer"],
+            "gt_answer":           rec["gt_answer"],
             **ret,
         })
     df = pd.DataFrame(rows)
 
     # ---- Generation metrics (batched) ----
-    predictions_rag   = df["rag_answer"].tolist()
-    refs_short        = df["gt_reference_answer"].tolist()  # for EM + ROUGE
-    refs_expert       = df["gt_answer"].tolist()            # for BERTScore
+    predictions_rag = df["rag_answer"].tolist()
+    refs_short      = df["gt_reference_answer"].tolist()  # ROUGE — vs reference_answer
+    refs_expert     = df["gt_answer"].tolist()             # BERTScore — vs expert answer
 
-    # Exact Match vs reference_answer
-    print("[evaluate] computing Exact Match...")
-    df["exact_match"] = compute_exact_match(predictions_rag, refs_short)
-
-    # ROUGE vs reference_answer
+    # ROUGE vs reference_answer (short, no reasoning)
     print("[evaluate] computing ROUGE...")
     r1, rL = compute_rouge(predictions_rag, refs_short)
     df["rouge1_recall"] = r1
     df["rougeL_recall"] = rL
 
-    # BERTScore vs answer (expert version)
+    # BERTScore vs answer (expert-revised, has reasoning + citation)
     if not skip_bertscore:
         print(f"[evaluate] computing BERTScore (model={bertscore_model})...")
         bs_recall = compute_bertscore(
@@ -270,14 +279,19 @@ def evaluate(
 
 def summarise(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Aggregate per-row metrics into a single summary row per system.
-    multi_hit excludes rows where reference_laws is empty (None values).
+    Aggregate per-row metrics เป็น summary ต่อระบบ
+
+    Retrieval metrics: mean ของทุก row
+    Generation metrics: mean ของทุก row
     """
     metric_cols = [
-        "top1_acc",
+        # Retrieval — T_full
         "hit_rate",
-        "multi_hit",       # None rows excluded from mean
-        "exact_match",
+        "multi_hit_rate",
+        "recall",
+        # Retrieval — T_main
+        "mrr",
+        # Generation
         "rouge1_recall",
         "rougeL_recall",
         "bertscore_recall",
@@ -302,16 +316,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute RAG evaluation metrics")
     parser.add_argument("--input",   nargs="+", required=True,
                         help="One or more JSONL result files")
-    parser.add_argument("--output",  default="eval_results.csv",
+    parser.add_argument("--output",  default="data/evaluation/eval_results.csv",
                         help="Path to save per-row results CSV")
-    parser.add_argument("--summary", default="eval_summary.csv",
+    parser.add_argument("--summary", default="data/evaluation/eval_summary.csv",
                         help="Path to save aggregated summary CSV")
     parser.add_argument("--bertscore-model",
-                        default="microsoft/mdeberta-v3-base",
-                        help="HuggingFace model for BERTScore")
+                        default="VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
+                        help="HuggingFace model for BERTScore "
+                             "(แนะนำ: VISAI-AI/nitibench-ccl-human-finetuned-bge-m3)")
     parser.add_argument("--bertscore-batch", type=int, default=16)
     parser.add_argument("--skip-bertscore",  action="store_true",
-                        help="Skip BERTScore (faster, no GPU needed)")
+                        help="Skip BERTScore computation (faster, no GPU needed)")
     args = parser.parse_args()
 
     all_dfs = []
