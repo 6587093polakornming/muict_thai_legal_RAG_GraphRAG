@@ -48,7 +48,7 @@ class LegalRetriever:
             neo4j_database=self.db_name
         )
 
-    def search(self, query_text: str):
+    def get_answer(self, query_text: str):
         retriever = self.get_retriever()
         rag = GraphRAG(llm=self.llm, retriever=retriever)
         return rag.search(query_text=query_text, retriever_config={"top_k": 5})

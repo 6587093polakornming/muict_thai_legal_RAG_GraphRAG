@@ -88,7 +88,7 @@ class GraphRAGAdapter(RAGAdapter):
 
         retriever = self.retriever.get_retriever()
         retrieved_docs = retriever.search(query_text=query, top_k=5)
-        rag_response = self.retriever.search(query)
+        rag_response = self.retriever.get_answer(query)
 
         docs = []
         rank = 1

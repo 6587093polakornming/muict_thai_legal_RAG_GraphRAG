@@ -68,7 +68,7 @@ if __name__ == "__main__":
             
             # Generate Answer
             start_llm = time.perf_counter()
-            rag_response = legal_rag.search(query)
+            rag_response = legal_rag.get_answer(query)
             llm_time = time.perf_counter() - start_llm
             
             total_elapsed = time.perf_counter() - start_total
