@@ -1,9 +1,15 @@
+from typing import Any, Dict, List, Tuple
+
+from langchain_core.documents import Document
 from neo4j_graphrag.retrievers import VectorCypherRetriever
 from neo4j_graphrag.generation import GraphRAG
 from neo4j_graphrag.llm import OpenAILLM
 from .config import Neo4jCompatibleEmbedder, get_neo4j_credentials
 from neo4j import GraphDatabase
 import os
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_openai import ChatOpenAI
+
 
 SYSTEM_PROMPT_TEMPLATE = """คุณคือผู้ช่วยด้านกฎหมายไทย (Thai Legal AI Assistant) ที่มีความเชี่ยวชาญด้านกฎหมายแพ่งและพาณิชย์ (CCL)
 คุณจะตอบคำถามโดยอิงจากข้อความกฎหมายที่ถูกดึงมาเท่านั้น ห้ามอนุมานหรือแต่งเติมข้อมูลที่ไม่มีในบริบท
@@ -37,7 +43,17 @@ class LegalRetriever:
         self.llm = OpenAILLM(
             model_name="typhoon-v2.5-30b-a3b-instruct",
             base_url="https://api.opentyphoon.ai/v1",
-            model_params={"temperature": 0.1, "max_tokens": 23113}
+            model_params={"temperature": 0, "max_tokens": 8196}
+        )
+
+        self.llm_langchain = ChatOpenAI(
+            model_name="typhoon-v2.5-30b-a3b-instruct",  # หรือรุ่นที่ท่านต้องการใช้
+            # model_name="openai/gpt-4o-mini",  # หรือรุ่นที่ท่านต้องการใช้
+            openai_api_key=os.getenv("thai_llm_API_key"),
+            openai_api_base="https://api.opentyphoon.ai/v1",  # สำคัญ: ใส่แทน base_url เดิม
+            # openai_api_base="https://openrouter.ai/api/v1",  # สำคัญ: ใส่แทน base_url เดิม
+            temperature=0,
+            max_tokens=8196,
         )
 
     def get_retriever(self, cypher_query: str = None):
@@ -71,4 +87,16 @@ class LegalRetriever:
     def get_answer(self, query_text: str):
         retriever = self.get_retriever()
         rag = GraphRAG(llm=self.llm, retriever=retriever)
-        return rag.search(query_text=query_text, retriever_config={"top_k": 5})
+        return rag.search(query_text=query_text, retriever_config={"top_k": 3})
+    
+    # def _call_llm(self, query: str, top_k: int = 1) -> Tuple[str, Dict[str, Any]]:
+    #     """
+    #     สร้าง prompt จาก docs ที่ retrieve มาแล้ว แล้วเรียก LLM โดยตรง
+    #     """
+    #     context = self.get_retriever().search(query_text=query, top_k=top_k)
+    #     system_content = SYSTEM_PROMPT_TEMPLATE.format(context=context)
+    #     messages = [SystemMessage(content=system_content), HumanMessage(content=query)]
+    #     response = self.llm_langchain.invoke(messages)
+    #     token_usage = response.response_metadata.get("token_usage", {})
+
+    #     return response.content, token_usage

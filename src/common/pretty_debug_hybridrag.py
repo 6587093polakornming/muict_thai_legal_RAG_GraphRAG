@@ -11,7 +11,7 @@ def pretty_print_rag(debug_result:dict):
                     - context (str): เนื้อหาที่ถูกนำไปใส่ใน Prompt
                     - answer (str): คำตอบจาก LLM
                     - token (dict): รายละเอียดการใช้ Token
-                    - time_elapsed (float): เวลาที่ใช้ในการประมวลผล
+                    - time_elapsed (dict): เวลาที่ใช้ในการประมวลผล
         """
         # 3. ดึงตัวแปรต่างๆ ออกมาใช้งาน
         answer = debug_result["answer"]
