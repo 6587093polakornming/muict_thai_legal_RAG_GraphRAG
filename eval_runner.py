@@ -144,7 +144,6 @@ class GraphRAGAdapter(RAGAdapter):
         }
 
         docs = []
-        rank = 1
         for item in retrieved_docs.items:
             meta = item.metadata or {}
 
@@ -156,7 +155,6 @@ class GraphRAGAdapter(RAGAdapter):
                     "section_num": str(meta.get("parent_section_num", "")),
                 }
             ))
-            rank += 1
 
             # Children docs
             for child in meta.get("children", []):
@@ -169,7 +167,6 @@ class GraphRAGAdapter(RAGAdapter):
                         "section_num": str(child["section_num"]),
                     }
                 ))
-                rank += 1
         answer = rag_response.answer
         return answer, docs, token, time_elapsed
 
