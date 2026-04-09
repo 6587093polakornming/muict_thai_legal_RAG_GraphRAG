@@ -63,12 +63,12 @@ if __name__ == "__main__":
             # Retrieve context
             start_retrieval = time.perf_counter()
             retriever = legal_rag.get_retriever(cypher_query=cypher_query)
-            retrieved_docs = retriever.search(query_text=query, top_k=5)
+            retrieved_docs = retriever.search(query_text=query, top_k=3)
             retrieve_time = time.perf_counter() - start_retrieval
             
             # Generate Answer
             start_llm = time.perf_counter()
-            rag_response = legal_rag.search(query)
+            rag_response = legal_rag.get_answer(query)
             llm_time = time.perf_counter() - start_llm
             
             total_elapsed = time.perf_counter() - start_total
