@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
+import tiktoken
 from tqdm import tqdm
 
 
@@ -97,13 +98,77 @@ class GraphRAGAdapter(RAGAdapter):
     name = "graph"
 
     def __init__(self):
-        # TODO: import and initialise your GraphRAG here
-        # from src.rag.graphrag_langchain import ThaiLegalGraphRAG
-        # self.rag = ThaiLegalGraphRAG(...)
-        raise NotImplementedError("GraphRAG adapter not yet wired up")
+        from src.graph_rag.graphrag_retriever import LegalRetriever
+        self.retriever = LegalRetriever()
+
+    def count_tokens(self, text: str, model: str = "gpt-4") -> int:
+        """Returns the number of tokens in a text string."""
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError:
+            # Fallback if model name isn't recognized
+            encoding = tiktoken.get_encoding("cl100k_base")
+        
+        return len(encoding.encode(text))
+
 
     def debug(self, query: str):
-        return self.rag.debug(query)
+        from langchain_core.documents import Document
+        retriever = self.retriever.get_retriever()
+
+        retrieve_start = time.perf_counter()
+        retrieved_docs = retriever.search(query_text=query, top_k=3)
+        retrieve_end = time.perf_counter()
+        retrieve_time = retrieve_end - retrieve_start
+
+        start_llm = time.perf_counter()
+        rag_response = self.retriever.get_answer(query)
+        llm_time = time.perf_counter() - start_llm
+
+        total_elapsed = retrieve_time + llm_time
+        time_elapsed = {
+            "retrieve_time": retrieve_time,
+            "llm_time": llm_time,
+            "total_elapsed": total_elapsed,
+        }
+        
+        context_text = "\n".join([item.content for item in retrieved_docs.items])
+        full_prompt = f"Context: {context_text}\n\nQuestion: {query}"
+        p_tokens = self.count_tokens(full_prompt)
+        c_tokens = self.count_tokens(rag_response.answer)
+
+        token = {
+            "prompt_tokens": p_tokens,
+            "completion_tokens": c_tokens,  
+            "total_tokens": p_tokens + c_tokens,       
+        }
+
+        docs = []
+        for item in retrieved_docs.items:
+            meta = item.metadata or {}
+
+            # Parent doc — score is a top-level attribute on RetrieverResultItem
+            docs.append(Document(
+                page_content=item.content,
+                metadata={
+                    "law_name":    meta.get("parent_law_name", ""),
+                    "section_num": str(meta.get("parent_section_num", "")),
+                }
+            ))
+
+            # Children docs
+            for child in meta.get("children", []):
+                if not child.get("law_name") or not child.get("section_num"):
+                    continue
+                docs.append(Document(
+                    page_content=child.get("text", ""),
+                    metadata={
+                        "law_name":    child["law_name"],
+                        "section_num": str(child["section_num"]),
+                    }
+                ))
+        answer = rag_response.answer
+        return answer, docs, token, time_elapsed
 
 
 # ---------------------------------------------------------------------------
@@ -116,8 +181,20 @@ def _serialise_docs(docs) -> list[dict]:
     Avoids storing full page_content (which is already in the dataset).
     """
     result = []
+    # Avoid duplicates (e.g. same section retrieved as parent and child in GraphRAG)
+    seen_law = set()
+
     for doc in docs:
         meta = doc.metadata if hasattr(doc, "metadata") else {}
+        
+        law_name = meta.get("law_name", "")
+        section_num = str(meta.get("section_num", ""))
+        key = (law_name, section_num)
+        
+        if key in seen_law:
+            continue
+        seen_law.add(key)
+
         result.append({
             "law_name":   meta.get("law_name", ""),
             "section_num": str(meta.get("section_num", "")),
@@ -175,6 +252,8 @@ def run_evaluation(
                 print(f"\n[ERROR] row {idx}: {e}")
                 answer = "__ERROR__"
                 docs = []
+                token = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                time_elapsed = {"retrieve_time": 0.0, "llm_time": 0.0, "total_elapsed": 0.0}
 
             record = {
                 "id":               idx,
