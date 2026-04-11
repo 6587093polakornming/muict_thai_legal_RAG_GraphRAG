@@ -21,8 +21,9 @@ import json
 import time
 from pathlib import Path
 
+import os
+from langchain_openai import ChatOpenAI
 import pandas as pd
-import tiktoken
 from tqdm import tqdm
 
 
@@ -99,7 +100,16 @@ class GraphRAGAdapter(RAGAdapter):
 
     def __init__(self):
         from src.graph_rag.graphrag_retriever import GraphRAGRetriever
-        self.retriever = GraphRAGRetriever()
+        llm = ChatOpenAI(
+            model_name="typhoon-v2.5-30b-a3b-instruct",  # หรือรุ่นที่ท่านต้องการใช้
+            # model_name="openai/gpt-4o-mini",  # หรือรุ่นที่ท่านต้องการใช้
+            openai_api_key=os.getenv("thai_llm_API_key"),
+            openai_api_base="https://api.opentyphoon.ai/v1",  # สำคัญ: ใส่แทน base_url เดิม
+            # openai_api_base="https://openrouter.ai/api/v1",  # สำคัญ: ใส่แทน base_url เดิม
+            temperature=0,
+            max_tokens=16384,
+        )
+        self.retriever = GraphRAGRetriever(llm=llm)
 
     def debug(self, query: str):
         results = self.retriever.debug(query=query)

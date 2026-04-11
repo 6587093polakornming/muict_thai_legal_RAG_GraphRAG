@@ -48,10 +48,9 @@ CYPHER_QUERY = """
                 } AS metadata
             """
 
-TOP_K = 3
 
 class GraphRAGRetriever:
-    def __init__(self):
+    def __init__(self, llm):
         creds = get_neo4j_credentials()
         self.driver = GraphDatabase.driver(creds["uri"], auth=(creds["user"], creds["pwd"]))
         self.db_name = creds["db"]
@@ -64,15 +63,16 @@ class GraphRAGRetriever:
         #     model_params={"temperature": 0, "max_tokens": 8196}
         # )
 
-        self.llm = ChatOpenAI(
-            model_name="typhoon-v2.5-30b-a3b-instruct",  # หรือรุ่นที่ท่านต้องการใช้
-            # model_name="openai/gpt-4o-mini",  # หรือรุ่นที่ท่านต้องการใช้
-            openai_api_key=os.getenv("thai_llm_API_key"),
-            openai_api_base="https://api.opentyphoon.ai/v1",  # สำคัญ: ใส่แทน base_url เดิม
-            # openai_api_base="https://openrouter.ai/api/v1",  # สำคัญ: ใส่แทน base_url เดิม
-            temperature=0,
-            max_tokens=8196,
-        )
+        self.llm = llm
+        # ChatOpenAI(
+        #     model_name="typhoon-v2.5-30b-a3b-instruct",  # หรือรุ่นที่ท่านต้องการใช้
+        #     # model_name="openai/gpt-4o-mini",  # หรือรุ่นที่ท่านต้องการใช้
+        #     openai_api_key=os.getenv("thai_llm_API_key"),
+        #     openai_api_base="https://api.opentyphoon.ai/v1",  # สำคัญ: ใส่แทน base_url เดิม
+        #     # openai_api_base="https://openrouter.ai/api/v1",  # สำคัญ: ใส่แทน base_url เดิม
+        #     temperature=0,
+        #     max_tokens=16384,
+        # )
 
     def get_retriever(self):
         return VectorCypherRetriever(
@@ -87,7 +87,7 @@ class GraphRAGRetriever:
         docs = []
 
         retriever = self.get_retriever()
-        context = retriever.get_search_results(query_text=query, top_k=TOP_K)
+        context = retriever.get_search_results(query_text=query, top_k=3)
         for i in range(len(context.records)):
             record = context.records[i]
             content = record.data().get("content", "")

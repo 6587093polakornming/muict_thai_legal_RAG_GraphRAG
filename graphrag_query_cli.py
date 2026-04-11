@@ -1,6 +1,5 @@
-import time
-import pandas as pd
-from src.graph_rag.graph_builder import LegalKGManager
+from langchain_openai import ChatOpenAI
+import os
 from src.graph_rag.graphrag_retriever import GraphRAGRetriever
 from src.common.pretty_debug_graphrag import pretty_print_rag
 
@@ -14,7 +13,16 @@ if __name__ == "__main__":
     # manager.close()
     
     # --- 2. Querying ---
-    legal_rag = GraphRAGRetriever()
+    llm= ChatOpenAI(
+            model_name="typhoon-v2.5-30b-a3b-instruct",  # หรือรุ่นที่ท่านต้องการใช้
+            # model_name="openai/gpt-4o-mini",  # หรือรุ่นที่ท่านต้องการใช้
+            openai_api_key=os.getenv("thai_llm_API_key"),
+            openai_api_base="https://api.opentyphoon.ai/v1",  # สำคัญ: ใส่แทน base_url เดิม
+            # openai_api_base="https://openrouter.ai/api/v1",  # สำคัญ: ใส่แทน base_url เดิม
+            temperature=0,
+            max_tokens=16384,
+    )
+    legal_rag = GraphRAGRetriever(llm=llm)
 
     
     while True:
