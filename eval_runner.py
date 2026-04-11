@@ -38,7 +38,6 @@ class RAGAdapter:
     """
     name: str = "base"
 
-    # TODO change method to debug()
     def debug(self, query: str):
         """
         Returns:
@@ -51,7 +50,6 @@ class RAGAdapter:
                             {retrieve_time, llm_time, total_elapsed}
             
         """
-        # TODO Exclude rank and score (because score is from reranking and rank is not use.)
         raise NotImplementedError
 
 
@@ -80,11 +78,10 @@ class HybridRAGAdapter(RAGAdapter):
         config = RAGConfig(retrieval_limit=3, reranking_limit=3)
         self.rag = ThaiLegalRAG(llm=llm, config=config)
 
-        # TODO simple handle cold start
+        # Handaling Cold Start 
         test_query = "ถ้ามีคนประกอบกิจการในลักษณะเป็นศูนย์ซื้อขายสัญญาซื้อขายล่วงหน้าโดยไม่ได้รับใบอนุญาตต้องระวางโทษอย่างไร"
         self.rag.debug(test_query)
 
-    # TODO change method to debug()
     def debug(self, query: str):
         results = self.rag.debug(query)
         answer:str = results.get("answer")
@@ -145,11 +142,8 @@ def _serialise_docs(docs) -> list[dict]:
         seen_law.add(key)
 
         result.append({
-            "law_name":   meta.get("law_name", ""),
-            "section_num": str(meta.get("section_num", "")),
-            # TODO remove rank and score
-            # "rank":        meta.get("rank", -1),
-            # "score":       float(meta.get("score", 0.0)),
+            "law_name":    law_name,
+            "section_num": section_num,
         })
 
         if meta.get("reference_laws"):
@@ -233,16 +227,14 @@ def run_evaluation(
                     for r in row["reference_laws"]
                 ],
                 # RAG output
-                "rag_answer":       answer,
-                "retrieved_docs":   _serialise_docs(docs),
-                # TODO add token and time_elapsed metadata 
-                "prompt_tokens":    token.get("prompt_tokens",0),
-                "completion_tokens":    token.get("completion_tokens",0),
-                "total_tokens":    token.get("total_tokens",0),
-
-                "retrieve_time": time_elapsed.get("retrieve_time", 0.0),
-                "llm_time": time_elapsed.get("llm_time", 0.0),
-                "total_elapsed": time_elapsed.get("total_elapsed", 0.0),
+                "rag_answer":        answer,
+                "retrieved_docs":    _serialise_docs(docs),
+                "prompt_tokens":     token.get("prompt_tokens", 0),
+                "completion_tokens": token.get("completion_tokens", 0),
+                "total_tokens":      token.get("total_tokens", 0),
+                "retrieve_time":     time_elapsed.get("retrieve_time", 0.0),
+                "llm_time":          time_elapsed.get("llm_time", 0.0),
+                "total_elapsed":     time_elapsed.get("total_elapsed", 0.0),
             }
 
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
