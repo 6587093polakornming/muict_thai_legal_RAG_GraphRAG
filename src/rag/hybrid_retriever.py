@@ -32,19 +32,22 @@ class HybridRetriever:
         self.final_limit = config.final_limit
 
     # Core search logic
-    def _encode_query(self, query: str) -> Tuple[list, SparseVector]:
+    def _encode_query(self, query: str, is_return_dense=True, is_return_sparse=True) -> Tuple[list, SparseVector]:
         output = self.embed_model.encode(
             [query],
-            return_dense=True,
-            return_sparse=True,
+            return_dense=is_return_dense,
+            return_sparse=is_return_sparse,
             max_length=512,
         )
-        dense_vec = output["dense_vecs"][0].tolist()
-        sparse_dict = output["lexical_weights"][0]
-        sparse_vec = SparseVector(
-            indices=[int(k) for k in sparse_dict.keys()],
-            values=[float(v) for v in sparse_dict.values()],
-        )
+        dense_vec, sparse_vec = [], SparseVector(indices=[], values=[])
+        if is_return_dense:
+            dense_vec = output["dense_vecs"][0].tolist()
+        if is_return_sparse:
+            sparse_dict = output["lexical_weights"][0]
+            sparse_vec = SparseVector(
+                indices=[int(k) for k in sparse_dict.keys()],
+                values=[float(v) for v in sparse_dict.values()],
+            )
         return dense_vec, sparse_vec
 
     def _hybrid_search(self, dense_vec: list, sparse_vec: SparseVector) -> list:
@@ -59,6 +62,15 @@ class HybridRetriever:
                 ),
             ],
             query=FusionQuery(fusion=Fusion.RRF),
+            limit=self.retrieval_limit,
+            with_payload=True,
+        ).points
+    
+    def _vector_search(self, dense_vec:list ) -> list:
+        return self.client.query_points(
+            collection_name=self.config.collection_name,
+            query=dense_vec,
+            using=self.config.vector_dense,
             limit=self.retrieval_limit,
             with_payload=True,
         ).points
