@@ -95,11 +95,10 @@ def convert_to_context_doc(context: List):
 
 
 # 5. Core LLM Call
-def _call_llm(llm, query: str, docs: List[Document]) -> Tuple[str, Dict[str, Any]]:
+def _call_llm(llm, query: str, context: str) -> Tuple[str, Dict[str, Any]]:
     """
     สร้าง prompt จาก docs ที่ retrieve มาแล้ว แล้วเรียก LLM โดยตรง
     """
-    context = format_context(docs)
     system_content = SYSTEM_PROMPT_TEMPLATE.format(context=context)
     messages = [SystemMessage(content=system_content), HumanMessage(content=query)]
     response = llm.invoke(messages)
@@ -129,7 +128,8 @@ class ThaiLegalRAG:
     def chat(self, query: str) -> str:
         """รับ query → คืน answer (ไม่คืน sources)"""
         docs = self.retriever.retrieve(query)
-        answer, _ = _call_llm(self.llm, query, docs)
+        context = format_context(docs)
+        answer, _ = _call_llm(self.llm, query, context)
         return answer
 
     def chat_with_sources(self, query: str) -> Tuple[str, List[Document]]:
@@ -138,7 +138,8 @@ class ThaiLegalRAG:
         retrieve เพียงครั้งเดียว ไม่เรียก reranker ซ้ำ
         """
         docs = self.retriever.retrieve(query)
-        answer, _ = _call_llm(self.llm, query, docs)
+        context = format_context(docs)
+        answer, _ = _call_llm(self.llm, query, context)
         return answer, docs
 
     def debug(self, query: str) -> dict:
@@ -148,17 +149,16 @@ class ThaiLegalRAG:
         candidates = self.retriever._hybrid_search(dense_vec, sparse_vec)
         reranked_pts = self.retriever._rerank(query, candidates)
         augmented_context = self.retriever._link_ref_law(reranked_pts)
-
         docs = convert_to_context_doc(augmented_context)
 
         # Final Limits
         if self.retriever.final_limit and self.retriever.final_limit > 0:
             docs = docs[: self.retriever.final_limit]
+        context = format_context(docs)
         retrieve_time = time.perf_counter() - start_retrieve
 
-        context = format_context(docs)
         start_llm = time.perf_counter()
-        answer, token_usage = _call_llm(self.llm, query, docs)
+        answer, token_usage = _call_llm(self.llm, query, context)
         llm_time = time.perf_counter() - start_llm
 
         total_elapsed = retrieve_time + llm_time
