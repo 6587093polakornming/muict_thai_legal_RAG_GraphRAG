@@ -159,7 +159,7 @@ python eval_runner.py --system graph  --output results_graph.jsonl  --sleep 0.5
   "gt_reference_laws": [{"law_name": "...", "section_num": "1608"}],
   "rag_answer": "...",
   "retrieved_docs": [
-    {"law_name": "...", "section_num": "1609", "rank": 1, "score": 0.92}
+    {"law_name": "...", "section_num": "1609" }
   ]
 }
 ```
