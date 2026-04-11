@@ -98,76 +98,15 @@ class GraphRAGAdapter(RAGAdapter):
     name = "graph"
 
     def __init__(self):
-        from src.graph_rag.graphrag_retriever import LegalRetriever
-        self.retriever = LegalRetriever()
-
-    def count_tokens(self, text: str, model: str = "gpt-4") -> int:
-        """Returns the number of tokens in a text string."""
-        try:
-            encoding = tiktoken.encoding_for_model(model)
-        except KeyError:
-            # Fallback if model name isn't recognized
-            encoding = tiktoken.get_encoding("cl100k_base")
-        
-        return len(encoding.encode(text))
-
+        from src.graph_rag.graphrag_retriever import GraphRAGRetriever
+        self.retriever = GraphRAGRetriever()
 
     def debug(self, query: str):
-        from langchain_core.documents import Document
-        retriever = self.retriever.get_retriever()
-
-        retrieve_start = time.perf_counter()
-        retrieved_docs = retriever.search(query_text=query, top_k=3)
-        retrieve_end = time.perf_counter()
-        retrieve_time = retrieve_end - retrieve_start
-
-        start_llm = time.perf_counter()
-        rag_response = self.retriever.get_answer(query)
-        llm_time = time.perf_counter() - start_llm
-
-        total_elapsed = retrieve_time + llm_time
-        time_elapsed = {
-            "retrieve_time": retrieve_time,
-            "llm_time": llm_time,
-            "total_elapsed": total_elapsed,
-        }
-        
-        context_text = "\n".join([item.content for item in retrieved_docs.items])
-        full_prompt = f"Context: {context_text}\n\nQuestion: {query}"
-        p_tokens = self.count_tokens(full_prompt)
-        c_tokens = self.count_tokens(rag_response.answer)
-
-        token = {
-            "prompt_tokens": p_tokens,
-            "completion_tokens": c_tokens,  
-            "total_tokens": p_tokens + c_tokens,       
-        }
-
-        docs = []
-        for item in retrieved_docs.items:
-            meta = item.metadata or {}
-
-            # Parent doc — score is a top-level attribute on RetrieverResultItem
-            docs.append(Document(
-                page_content=item.content,
-                metadata={
-                    "law_name":    meta.get("parent_law_name", ""),
-                    "section_num": str(meta.get("parent_section_num", "")),
-                }
-            ))
-
-            # Children docs
-            for child in meta.get("children", []):
-                if not child.get("law_name") or not child.get("section_num"):
-                    continue
-                docs.append(Document(
-                    page_content=child.get("text", ""),
-                    metadata={
-                        "law_name":    child["law_name"],
-                        "section_num": str(child["section_num"]),
-                    }
-                ))
-        answer = rag_response.answer
+        results = self.retriever.debug(query=query)
+        answer:str = results.get("answer")
+        docs:list = results.get("docs_candidates")
+        token:dict = results.get("token")
+        time_elapsed:dict = results.get("time_elapsed")
         return answer, docs, token, time_elapsed
 
 
@@ -202,6 +141,18 @@ def _serialise_docs(docs) -> list[dict]:
             # "rank":        meta.get("rank", -1),
             # "score":       float(meta.get("score", 0.0)),
         })
+
+        if meta.get("reference_laws"):
+            for ref in meta.get("reference_laws", []):
+                ref_key = (ref.get("law_name", ""), str(ref.get("section_num", "")))
+                if ref_key in seen_law:
+                    continue
+                seen_law.add(ref_key)
+
+                result.append({
+                    "law_name":   ref.get("law_name", ""),
+                    "section_num": str(ref.get("section_num", "")),
+                })
     return result
 
 
