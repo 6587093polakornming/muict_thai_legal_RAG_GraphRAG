@@ -74,7 +74,7 @@ class HybridRAGAdapter(RAGAdapter):
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_api_base="https://api.opentyphoon.ai/v1",
             temperature=0,
-            max_tokens=23113,
+            max_tokens=16384,
         )
         config = RAGConfig(retrieval_limit=3, reranking_limit=3)
         self.rag = ThaiLegalRAG(llm=llm, config=config)
