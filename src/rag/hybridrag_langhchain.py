@@ -175,3 +175,59 @@ class ThaiLegalRAG:
             "token": token_usage,
             "time_elapsed": time_elapsed
         }
+    
+    def debug_custom_pipeline(self, pipeline_name: str, query: str) -> dict:
+        # Pipeline
+        start_retrieve = time.perf_counter()
+        # vector search
+        print(f"Calling {pipeline_name} pipeline")
+        dense_vec, _ = self.retriever._encode_query(query, is_return_dense=True, is_return_sparse=False)
+        candidates = self.retriever._vector_search(dense_vec)
+
+        len_candidates = len(candidates)
+
+        # convert qdrant points to langchain doc
+        docs = [
+            Document(
+                page_content=r.payload.get("text", ""),
+                metadata={
+                    "law_name": r.payload.get("law_name", ""),
+                    "section_num": r.payload.get("section_num", ""),
+                    "reference_laws": r.payload.get("reference_laws", []),
+                    "rank": i+1,
+                    "score": len_candidates - i # Manual Score with length element
+                },
+            )
+            for i, r in enumerate(candidates, start=0)
+        ]
+
+        # Final Limits
+        if self.retriever.final_limit and self.retriever.final_limit > 0:
+            docs = docs[: self.retriever.final_limit]
+        retrieve_time = time.perf_counter() - start_retrieve
+
+        # Format Context
+        context = format_context(docs)
+
+        #Call LLM
+        start_llm = time.perf_counter()
+        answer, token_usage = _call_llm(self.llm, query, docs)
+        llm_time = time.perf_counter() - start_llm
+        total_elapsed = retrieve_time + llm_time
+        time_elapsed = {
+            "retrieve_time": retrieve_time,
+            "llm_time": llm_time,
+            "total_elapsed": total_elapsed,
+        }
+
+        return {
+            "query": query,
+            "num_candidates": len(candidates),
+            "final": len(docs),
+            "docs_candidates": docs,
+            "context": context,
+            "answer": answer,
+            "token": token_usage,
+            "time_elapsed": time_elapsed
+        }
+        
