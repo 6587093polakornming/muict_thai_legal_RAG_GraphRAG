@@ -65,7 +65,6 @@ def build_models(config: RAGConfig):
     return embed_model, reranker, qdrant_client
 
 
-
 # 4. Context Formatter
 def format_context(docs: List[Document]) -> str:
     if not docs:
@@ -77,8 +76,25 @@ def format_context(docs: List[Document]) -> str:
     return "\n\n".join(parts)
 
 
+# Helper Convert Qdrant Point to Doc Langchain Stardard for Evaluation
+def convert_to_context_doc(context: List):
+    docs = [
+        Document(
+            page_content=r.payload.get("text", ""),
+            metadata={
+                "law_name": r.payload.get("law_name", ""),
+                "section_num": r.payload.get("section_num", ""),
+                "reference_laws": r.payload.get("reference_laws", []),
+                "rank": i,  # Optional
+                "score": r.score,  # Optional
+            },
+        )
+        for i, r in enumerate(context, start=1)
+    ]
+    return docs
 
-# 5. Core LLM Call  
+
+# 5. Core LLM Call
 def _call_llm(llm, query: str, docs: List[Document]) -> Tuple[str, Dict[str, Any]]:
     """
     สร้าง prompt จาก docs ที่ retrieve มาแล้ว แล้วเรียก LLM โดยตรง
@@ -98,7 +114,7 @@ class ThaiLegalRAG:
 
     def __init__(self, llm, config: RAGConfig = None) -> None:
         if config is None:
-            config = RAGConfig()       # ใช้ค่า default ถ้าไม่ส่งมา
+            config = RAGConfig()  # ใช้ค่า default ถ้าไม่ส่งมา
 
         embed_model, reranker, client = build_models(config)
         self.llm = llm
@@ -106,7 +122,7 @@ class ThaiLegalRAG:
             embed_model=embed_model,
             reranker=reranker,
             client=client,
-            config=config,             # ส่ง config object ตัวเดียว
+            config=config,  # ส่ง config object ตัวเดียว
         )
 
     # Public API
@@ -121,8 +137,8 @@ class ThaiLegalRAG:
         รับ query → คืน (answer, docs)
         retrieve เพียงครั้งเดียว ไม่เรียก reranker ซ้ำ
         """
-        docs = self.retriever.retrieve(query)  
-        answer, _ = _call_llm(self.llm, query, docs)  
+        docs = self.retriever.retrieve(query)
+        answer, _ = _call_llm(self.llm, query, docs)
         return answer, docs
 
     def debug(self, query: str) -> dict:
@@ -133,19 +149,7 @@ class ThaiLegalRAG:
         reranked_pts = self.retriever._rerank(query, candidates)
         augmented_context = self.retriever._link_ref_law(reranked_pts)
 
-        docs = [
-            Document(
-                page_content=r.payload.get("text", ""),
-                metadata={
-                    "law_name": r.payload.get("law_name", ""),
-                    "section_num": r.payload.get("section_num", ""),
-                    "reference_laws": r.payload.get("reference_laws", []),
-                    "rank": i,
-                    "score": r.score,
-                },
-            )
-            for i, r in enumerate(augmented_context, start=1)
-        ]
+        docs = convert_to_context_doc(augmented_context)
 
         # Final Limits
         if self.retriever.final_limit and self.retriever.final_limit > 0:
@@ -173,5 +177,62 @@ class ThaiLegalRAG:
             "context": context,
             "answer": answer,
             "token": token_usage,
-            "time_elapsed": time_elapsed
+            "time_elapsed": time_elapsed,
+        }
+
+    def debug_custom_pipeline(self, pipeline_name: str, query: str) -> dict:
+        # Pipeline
+        start_retrieve = time.perf_counter()
+        # vector search
+        print(f"Calling {pipeline_name} pipeline")
+        dense_vec, _ = self.retriever._encode_query(
+            query, is_return_dense=True, is_return_sparse=False
+        )
+        candidates = self.retriever._vector_search(dense_vec)
+
+        len_candidates = len(candidates)
+
+        # convert qdrant points to langchain doc
+        docs = [
+            Document(
+                page_content=r.payload.get("text", ""),
+                metadata={
+                    "law_name": r.payload.get("law_name", ""),
+                    "section_num": r.payload.get("section_num", ""),
+                    "reference_laws": r.payload.get("reference_laws", []),
+                    "rank": i + 1,
+                    "score": len_candidates - i,  # Manual Score with length element
+                },
+            )
+            for i, r in enumerate(candidates, start=0)
+        ]
+
+        # Final Limits
+        if self.retriever.final_limit and self.retriever.final_limit > 0:
+            docs = docs[: self.retriever.final_limit]
+        retrieve_time = time.perf_counter() - start_retrieve
+
+        # Format Context
+        context = format_context(docs)
+
+        # Call LLM
+        start_llm = time.perf_counter()
+        answer, token_usage = _call_llm(self.llm, query, docs)
+        llm_time = time.perf_counter() - start_llm
+        total_elapsed = retrieve_time + llm_time
+        time_elapsed = {
+            "retrieve_time": retrieve_time,
+            "llm_time": llm_time,
+            "total_elapsed": total_elapsed,
+        }
+
+        return {
+            "query": query,
+            "num_candidates": len(candidates),
+            "final": len(docs),
+            "docs_candidates": docs,
+            "context": context,
+            "answer": answer,
+            "token": token_usage,
+            "time_elapsed": time_elapsed,
         }
