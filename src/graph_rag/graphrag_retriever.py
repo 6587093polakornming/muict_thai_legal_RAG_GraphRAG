@@ -137,12 +137,12 @@ class GraphRAGRetriever:
         start_retrieve = time.perf_counter()
 
         docs = self.get_retrieve(query=query)
+        context = self.format_context(docs)
         retrieve_time = time.perf_counter() - start_retrieve
 
-        context = self.format_context(docs)
         start_llm = time.perf_counter()
 
-        answer, token_usage = self._call_llm(query=query, docs=docs)
+        answer, token_usage = self._call_llm(query=query, context=context)
         llm_time = time.perf_counter() - start_llm
 
         total_elapsed = retrieve_time + llm_time
@@ -162,11 +162,10 @@ class GraphRAGRetriever:
             "time_elapsed": time_elapsed
         }
 
-    def _call_llm(self, query: str, docs: List) -> Tuple[str, Dict[str, Any]]:
+    def _call_llm(self, query: str, context: str) -> Tuple[str, Dict[str, Any]]:
         """
         สร้าง prompt จาก docs ที่ retrieve มาแล้ว แล้วเรียก LLM โดยตรง
         """
-        context = self.format_context(docs)
         system_content = SYSTEM_PROMPT_TEMPLATE.format(context=context)
         messages = [SystemMessage(content=system_content), HumanMessage(content=query)]
         response = self.llm.invoke(messages)
