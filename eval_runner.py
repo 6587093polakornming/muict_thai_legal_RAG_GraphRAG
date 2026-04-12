@@ -67,7 +67,6 @@ class HybridRAGAdapter(RAGAdapter):
         from src.rag.hybridrag_langhchain import ThaiLegalRAG
 
         load_dotenv()
-
         llm = ChatOpenAI(
             model_name="typhoon-v2.5-30b-a3b-instruct",
             openai_api_key=os.getenv("OPENAI_API_KEY"),
@@ -80,10 +79,10 @@ class HybridRAGAdapter(RAGAdapter):
 
         # Handaling Cold Start 
         test_query = "ถ้ามีคนประกอบกิจการในลักษณะเป็นศูนย์ซื้อขายสัญญาซื้อขายล่วงหน้าโดยไม่ได้รับใบอนุญาตต้องระวางโทษอย่างไร"
-        self.rag.debug(test_query)
+        self.rag.hybrid_ref_rag(test_query)
 
     def debug(self, query: str):
-        results = self.rag.debug(query)
+        results = self.rag.hybrid_ref_rag(query)
         answer:str = results.get("answer")
         docs:list = results.get("docs_candidates")
         token:dict = results.get("token")
@@ -106,7 +105,7 @@ class GraphRAGAdapter(RAGAdapter):
             temperature=0,
             max_tokens=16384,
         )
-        self.retriever = GraphRAGRetriever(llm=llm)
+        self.retriever = GraphRAGRetriever(llm=llm, top_k=3)
 
     def debug(self, query: str):
         results = self.retriever.debug(query=query)

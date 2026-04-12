@@ -47,5 +47,5 @@ if __name__ == "__main__":
             continue
         # 2. เรียกใช้งาน RAG ผ่าน debug function
 
-        debug_result = rag.debug(question)
+        debug_result = rag.hybrid_ref_rag(question)
         pretty_print_rag(debug_result)
