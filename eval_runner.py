@@ -80,10 +80,10 @@ class HybridRAGAdapter(RAGAdapter):
 
         # Handaling Cold Start 
         test_query = "ถ้ามีคนประกอบกิจการในลักษณะเป็นศูนย์ซื้อขายสัญญาซื้อขายล่วงหน้าโดยไม่ได้รับใบอนุญาตต้องระวางโทษอย่างไร"
-        self.rag.debug(test_query)
+        self.rag.hybrid_ref_rag(test_query)
 
     def debug(self, query: str):
-        results = self.rag.debug(query)
+        results = self.rag.hybrid_ref_rag(query)
         answer:str = results.get("answer")
         docs:list = results.get("docs_candidates")
         token:dict = results.get("token")
