@@ -67,7 +67,6 @@ class HybridRAGAdapter(RAGAdapter):
         from src.rag.hybridrag_langhchain import ThaiLegalRAG
 
         load_dotenv()
-
         llm = ChatOpenAI(
             model_name="typhoon-v2.5-30b-a3b-instruct",
             openai_api_key=os.getenv("OPENAI_API_KEY"),
@@ -106,7 +105,7 @@ class GraphRAGAdapter(RAGAdapter):
             temperature=0,
             max_tokens=16384,
         )
-        self.retriever = GraphRAGRetriever(llm=llm)
+        self.retriever = GraphRAGRetriever(llm=llm, top_k=3)
 
     def debug(self, query: str):
         results = self.retriever.debug(query=query)

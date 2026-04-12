@@ -50,7 +50,7 @@ RETURN
 
 
 class GraphRAGRetriever:
-    def __init__(self, llm):
+    def __init__(self, llm, top_k=3):
         creds = get_neo4j_credentials()
         self.driver = GraphDatabase.driver(creds["uri"], auth=(creds["user"], creds["pwd"]))
         self.db_name = creds["db"]
@@ -73,6 +73,7 @@ class GraphRAGRetriever:
         #     temperature=0,
         #     max_tokens=16384,
         # )
+        self.top_k = top_k
 
     def get_retriever(self):
         return VectorCypherRetriever(
@@ -87,7 +88,7 @@ class GraphRAGRetriever:
         docs = []
 
         retriever = self.get_retriever()
-        context = retriever.get_search_results(query_text=query, top_k=3)
+        context = retriever.get_search_results(query_text=query, top_k=self.top_k)
         for i in range(len(context.records)):
             record = context.records[i]
             content = record.data().get("content", "")
