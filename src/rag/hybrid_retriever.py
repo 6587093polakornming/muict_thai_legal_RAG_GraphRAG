@@ -7,7 +7,7 @@ from qdrant_client.http import models
 from qdrant_client.models import SparseVector, Prefetch, Fusion, FusionQuery
 from langchain_core.documents import Document
 from typing import Optional
-from .config import RAGConfig # Configuration
+from .config import RAGConfig  # Configuration
 
 
 class HybridRetriever:
@@ -32,7 +32,9 @@ class HybridRetriever:
         self.final_limit = config.final_limit
 
     # Core search logic
-    def _encode_query(self, query: str, is_return_dense=True, is_return_sparse=True) -> Tuple[list, SparseVector]:
+    def _encode_query(
+        self, query: str, is_return_dense=True, is_return_sparse=True
+    ) -> Tuple[list, SparseVector]:
         output = self.embed_model.encode(
             [query],
             return_dense=is_return_dense,
@@ -55,22 +57,35 @@ class HybridRetriever:
             collection_name=self.config.collection_name,
             prefetch=[
                 Prefetch(
-                    query=dense_vec, using=self.config.vector_dense, limit=self.retrieval_limit
+                    query=dense_vec,
+                    using=self.config.vector_dense,
+                    limit=self.retrieval_limit,
                 ),
                 Prefetch(
-                    query=sparse_vec, using=self.config.vector_sparse, limit=self.retrieval_limit
+                    query=sparse_vec,
+                    using=self.config.vector_sparse,
+                    limit=self.retrieval_limit,
                 ),
             ],
             query=FusionQuery(fusion=Fusion.RRF),
             limit=self.retrieval_limit,
             with_payload=True,
         ).points
-    
-    def _vector_search(self, dense_vec:list ) -> list:
+
+    def _vector_search(self, dense_vec: list) -> list:
         return self.client.query_points(
             collection_name=self.config.collection_name,
             query=dense_vec,
             using=self.config.vector_dense,
+            limit=self.retrieval_limit,
+            with_payload=True,
+        ).points
+
+    def _keyword_search(self, sparse_vec: SparseVector) -> list:
+        return self.client.query_points(
+            collection_name=self.config.collection_name,
+            query=sparse_vec,
+            using=self.config.vector_sparse,
             limit=self.retrieval_limit,
             with_payload=True,
         ).points
@@ -85,34 +100,53 @@ class HybridRetriever:
         candidates.sort(key=lambda x: x.score, reverse=True)
         return candidates[: self.reranking_limit]
 
-    def _link_ref_law(self, list_pts: list) -> list:
+    # new parameter
+    # expansion_mode: str = top-1 (default) , top-n
+    # top-1 Expand เฉพาะมาตราอ้างอิงที่พบในผลลัพธ์อันดับที่ 1, top-n Expand มาตราอ้างอิงที่พบจากผลลัพธ์ทั้ง N อันดับ
+    # reorder_mode: str  =  parent-first (default), append-last
+    # parent-first เรียงแบบ มาตราหลัก (Parent) → มาตราอ้างอิง (Child) คู่ ดั้งเดิมทำแบบนี้, append-last นำมาตราอ้างอิงทั้งหมดไปต่อท้าย Context หลักทั้งหมด
+    def _link_ref_law(
+        self, list_pts: list, expansion_mode="top-1", reorder_mode="parent-first"
+    ) -> list:
         """
-        Augment retrieved contexts for Hybrid RAG by injecting related law references.
-
-        This function expands the first retrieved context by fetching its referenced
-        law documents (if any), then reorders all contexts before passing to the LLM.
-
-        Final ordering:
-            [first context] + [its referenced laws] + [remaining contexts]
-
-        Purpose:
-            Enable cross-referencing of relevant legal sections to improve answer generation.
+        Augment retrieved contexts for Hybrid RAG by injecting related law references
+        Parameters:
+            list_pts (list): List of ScoredPoint results from hybrid search.
+            expansion_mode (str):
+                - "top-1" : Expand reference laws only from the 1st ranked result (default)
+                - "top-n" : Expand reference laws from ALL N ranked results
+            reorder_mode (str):
+                - "parent-first" : [parent] → [ref laws ของ parent] → [remaining] (default)
+                - "append-last"  : [all original results] → [all ref laws ต่อท้าย]
+        Returns:
+            list: Reordered list of ScoredPoint with reference law contexts injected
         """
         if not list_pts:
             return []
 
-        first_context = list_pts[0]
-        query_lst = first_context.payload.get("reference_laws", [])
+        # expansion_mode: เลือก context ที่จะนำไปหา reference_laws
+        if expansion_mode == "top-n":
+            lst_context = list_pts
+        else:  # default: top-1
+            lst_context = [list_pts[0]]
+
+        # query_lst: flatten reference_laws จากทุก context ที่เลือก
+        query_lst = [
+            ref
+            for context in lst_context
+            for ref in context.payload.get("reference_laws", [])
+        ]
 
         if not query_lst:
             return list_pts
 
-        # Filter สำหรับ Batch Query
+        # ดึง reference law documents จาก Qdrant
         should_conditions = [
             models.Filter(
                 must=[
                     models.FieldCondition(
-                        key="law_name", match=models.MatchValue(value=ref["law_name"])
+                        key="law_name",
+                        match=models.MatchValue(value=ref["law_name"]),
                     ),
                     models.FieldCondition(
                         key="section_num",
@@ -123,7 +157,6 @@ class HybridRetriever:
             for ref in query_lst
         ]
 
-        # ดึงข้อมูลกฎหมายอ้างอิง
         batch_results, _ = self.client.scroll(
             collection_name=self.config.collection_name,
             scroll_filter=models.Filter(should=should_conditions),
@@ -132,40 +165,90 @@ class HybridRetriever:
             with_vectors=False,
         )
 
-        # แปลงเป็น ScoredPoint
-        ref_scored_pts = [
-            models.ScoredPoint(
-                id=res.id, payload=res.payload, score=first_context.score, version=0
-            )
+        # lookup (law_name, section_num) → res  แทน triple-nested loop O(N×M×R) → O(R)
+        batch_key_map = {
+            (res.payload["law_name"], res.payload["section_num"]): res
             for res in batch_results
-        ]
+        }
+        # lookup id → res สำหรับ append-last
+        batch_map = {res.id: res for res in batch_results}
 
-        # รวมผลลัพธ์และลบตัวซ้ำ (Deduplicate) โดยใช้ ID เป็น Unique Key
-        seen_ids = {first_context.id}  
-        final_results = [first_context]
+        # สร้าง ref_to_parent: res.id → parent_context ที่ถูกต้อง (ใช้ร่วมกันทั้ง 2 mode)
+        # O(N × M) แทน O(N × M × R) เดิม
+        ref_to_parent: dict = {}
+        for parent_context in lst_context:
+            for ref in parent_context.payload.get("reference_laws", []):
+                key = (ref["law_name"], ref["section_num"])
+                res = batch_key_map.get(key)
+                if res and res.id not in ref_to_parent:
+                    ref_to_parent[res.id] = parent_context
 
-        # เพิ่มกฎหมายอ้างอิง (ถ้ายังไม่มีใน list)
-        for pt in ref_scored_pts:
-            if pt.id not in seen_ids:
-                final_results.append(pt)
-                seen_ids.add(pt.id)
+        if reorder_mode == "parent-first":
+            # เรียง: [parent] → [ref laws ของ parent นั้น] → [remaining]
+            seen_ids = set()
+            final_results = []
 
-        # เพิ่มมาตราอื่น ๆ จากการ Search เดิม (ถ้ายังไม่มีใน list)
-        for pt in list_pts[1:]:
-            if pt.id not in seen_ids:
-                final_results.append(pt)
-                seen_ids.add(pt.id)
-                
-        return final_results
+            for parent_context in lst_context:
+                if parent_context.id not in seen_ids:
+                    final_results.append(parent_context)
+                    seen_ids.add(parent_context.id)
+
+                # กรองเฉพาะ ref ที่เป็นของ parent นี้ — ถูก score และถูก ordering
+                for res_id, owner in ref_to_parent.items():
+                    if owner is parent_context and res_id not in seen_ids:
+                        res = batch_map[res_id]
+                        final_results.append(
+                            models.ScoredPoint(
+                                id=res.id,
+                                payload=res.payload,
+                                score=parent_context.score,
+                                version=0,
+                            )
+                        )
+                        seen_ids.add(res_id)
+
+            for pt in list_pts:
+                if pt.id not in seen_ids:
+                    final_results.append(pt)
+                    seen_ids.add(pt.id)
+
+            return final_results
+
+        elif reorder_mode == "append-last":
+            # เรียง: [original results ทั้งหมด] → [ref laws ต่อท้าย]
+            seen_ids = {pt.id for pt in list_pts}
+            final_results = list(list_pts)
+
+            for res_id, parent_context in ref_to_parent.items():
+                if res_id not in seen_ids:
+                    res = batch_map[res_id]
+                    final_results.append(
+                        models.ScoredPoint(
+                            id=res.id,
+                            payload=res.payload,
+                            score=parent_context.score,
+                            version=0,
+                        )
+                    )
+                    seen_ids.add(res_id)
+
+            return final_results
 
     # Public API — returns LangChain Documents
-    def retrieve(self, query: str) -> List[Document]:
+    def retrieve(
+        self, query: str, expansion_mode="top-1", reorder_mode="parent-first"
+    ) -> List[Document]:
         dense_vec, sparse_vec = self._encode_query(query)
         candidates = self._hybrid_search(dense_vec, sparse_vec)
         ranked = self._rerank(query, candidates)
-        augmented_context = self._link_ref_law(ranked)
+        augmented_context = self._link_ref_law(
+            list_pts=ranked, 
+            expansion_mode=expansion_mode, 
+            reorder_mode=reorder_mode,
+        )
 
         docs = []
+        
         for i, r in enumerate(augmented_context, start=1):
             p = r.payload
             docs.append(
