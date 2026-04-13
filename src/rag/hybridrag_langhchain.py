@@ -93,23 +93,24 @@ def convert_to_context_doc(doc_context: List):
     ]
     return docs
 
+
 def convert_to_context_doc_custom(doc_context: list):
-        # convert qdrant points to langchain doc
-        len_doc = len(doc_context)
-        docs = [
-            Document(
-                page_content=r.payload.get("text", ""),
-                metadata={
-                    "law_name": r.payload.get("law_name", ""),
-                    "section_num": r.payload.get("section_num", ""),
-                    "reference_laws": r.payload.get("reference_laws", []),
-                    "rank": i + 1,
-                    "score": len_doc - i,  # Manual Score with length element
-                },
-            )
-            for i, r in enumerate(doc_context, start=0)
-        ]
-        return docs
+    # convert qdrant points to langchain doc
+    len_doc = len(doc_context)
+    docs = [
+        Document(
+            page_content=r.payload.get("text", ""),
+            metadata={
+                "law_name": r.payload.get("law_name", ""),
+                "section_num": r.payload.get("section_num", ""),
+                "reference_laws": r.payload.get("reference_laws", []),
+                "rank": i + 1,
+                "score": len_doc - i,  # Manual Score with length element
+            },
+        )
+        for i, r in enumerate(doc_context, start=0)
+    ]
+    return docs
 
 
 # 5. Core LLM Call
@@ -143,7 +144,14 @@ class ThaiLegalRAG:
         )
 
     # Helper Method for runing rag experiment Pipeline
-    def _run_rag_pipeline(self, query: str, docs: list, candidates_count:int, start_retrieve: float, extra_meta: dict = None)-> dict:
+    def _run_rag_pipeline(
+        self,
+        query: str,
+        docs: list,
+        candidates_count: int,
+        start_retrieve: float,
+        extra_meta: dict = None,
+    ) -> dict:
         """Helper function สำหรับจัดการ logic ส่วนท้ายที่เหมือนกันของทุก pipeline"""
 
         # Final Limit
@@ -152,7 +160,7 @@ class ThaiLegalRAG:
 
         context = format_context(docs)
         retrieve_time = time.perf_counter() - start_retrieve
-        
+
         # Call LLM
         start_llm = time.perf_counter()
         answer, token_usage = _call_llm(self.llm, query, context)
@@ -173,11 +181,11 @@ class ThaiLegalRAG:
                 "total_elapsed": retrieve_time + llm_time,
             },
         }
-        
+
         # ถ้ามีข้อมูลเฉพาะของแต่ละ pipeline (เช่น rerank_candidates) ให้รวมเข้าไปด้วย
         if extra_meta:
             response.update(extra_meta)
-            
+
         return response
 
     # Public API
@@ -192,6 +200,7 @@ class ThaiLegalRAG:
         return answer, docs
 
     # Pipeline Experiement
+    # TODO add logic and parameter to _link_ref_law
     def hybrid_ref_rag(self, query: str) -> dict:
         start_retrieve = time.perf_counter()
         dense_vec, sparse_vec = self.retriever._encode_query(query)
@@ -199,11 +208,37 @@ class ThaiLegalRAG:
         reranked_pts = self.retriever._rerank(query, candidates)
         augmented_context = self.retriever._link_ref_law(reranked_pts)
         docs = convert_to_context_doc(augmented_context)
-        
+
         return self._run_rag_pipeline(
-            query, docs, len(candidates), start_retrieve, 
-            extra_meta={"rerank_candidates": len(reranked_pts)}
+            query,
+            docs,
+            len(candidates),
+            start_retrieve,
+            extra_meta={"rerank_candidates": len(reranked_pts)},
         )
+
+    def hybrid_rerank_rag(self, query: str) -> dict:
+        start_retrieve = time.perf_counter()
+        dense_vec, sparse_vec = self.retriever._encode_query(query)
+        candidates = self.retriever._hybrid_search(dense_vec, sparse_vec)
+        reranked_pts = self.retriever._rerank(query, candidates)
+        docs = convert_to_context_doc(reranked_pts)
+
+        return self._run_rag_pipeline(
+            query,
+            docs,
+            len(candidates),
+            start_retrieve,
+            extra_meta={"rerank_candidates": len(reranked_pts)},
+        )
+
+    def hybrid_rag(self, query: str) -> dict:
+        start_retrieve = time.perf_counter()
+        dense_vec, sparse_vec = self.retriever._encode_query(query)
+        candidates = self.retriever._hybrid_search(dense_vec, sparse_vec)
+        docs = convert_to_context_doc_custom(candidates)
+
+        return self._run_rag_pipeline(query, docs, len(candidates), start_retrieve)
 
     def dense_rag(self, query: str) -> dict:
         start_retrieve = time.perf_counter()
@@ -212,5 +247,16 @@ class ThaiLegalRAG:
         )
         candidates = self.retriever._vector_search(dense_vec)
         docs = convert_to_context_doc_custom(candidates)
-        
+
         return self._run_rag_pipeline(query, docs, len(candidates), start_retrieve)
+
+    # TODO Test & Review this
+    def sparse_rag(self, query: str) -> dict:
+        start_retrieve = time.perf_counter()
+        _ , sparse_vec = self.retriever._encode_query(
+            query, is_return_dense=False, is_return_sparse=True
+        )
+        candidates = self.retriever._keyword_search(sparse_vec)
+        docs = convert_to_context_doc_custom(candidates)
+
+        return self._run_rag_pipeline(query, docs, len(candidates), start_retrieve)   
