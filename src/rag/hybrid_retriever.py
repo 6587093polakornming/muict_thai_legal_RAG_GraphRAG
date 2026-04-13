@@ -100,7 +100,6 @@ class HybridRetriever:
         candidates.sort(key=lambda x: x.score, reverse=True)
         return candidates[: self.reranking_limit]
 
-    # TODO add logic and parameter to _link_ref_law
     # new parameter
     # expansion_mode: str = top-1 (default) , top-n
     # top-1 Expand เฉพาะมาตราอ้างอิงที่พบในผลลัพธ์อันดับที่ 1, top-n Expand มาตราอ้างอิงที่พบจากผลลัพธ์ทั้ง N อันดับ
@@ -110,19 +109,17 @@ class HybridRetriever:
         self, list_pts: list, expansion_mode="top-1", reorder_mode="parent-first"
     ) -> list:
         """
-        Augment retrieved contexts for Hybrid RAG by injecting related law references.
-
+        Augment retrieved contexts for Hybrid RAG by injecting related law references
         Parameters:
             list_pts (list): List of ScoredPoint results from hybrid search.
             expansion_mode (str):
-                - "top-1" : Expand reference laws only from the 1st ranked result (default).
-                - "top-n" : Expand reference laws from ALL N ranked results.
+                - "top-1" : Expand reference laws only from the 1st ranked result (default)
+                - "top-n" : Expand reference laws from ALL N ranked results
             reorder_mode (str):
-                - "parent-first" : [parent] → [ref laws ของ parent] → [remaining] (default).
-                - "append-last"  : [all original results] → [all ref laws ต่อท้าย].
-
+                - "parent-first" : [parent] → [ref laws ของ parent] → [remaining] (default)
+                - "append-last"  : [all original results] → [all ref laws ต่อท้าย]
         Returns:
-            list: Reordered list of ScoredPoint with reference law contexts injected.
+            list: Reordered list of ScoredPoint with reference law contexts injected
         """
         if not list_pts:
             return []
@@ -135,7 +132,8 @@ class HybridRetriever:
 
         # query_lst: flatten reference_laws จากทุก context ที่เลือก
         query_lst = [
-            ref for context in lst_context
+            ref
+            for context in lst_context
             for ref in context.payload.get("reference_laws", [])
         ]
 
@@ -201,8 +199,10 @@ class HybridRetriever:
                         res = batch_map[res_id]
                         final_results.append(
                             models.ScoredPoint(
-                                id=res.id, payload=res.payload,
-                                score=parent_context.score, version=0
+                                id=res.id,
+                                payload=res.payload,
+                                score=parent_context.score,
+                                version=0,
                             )
                         )
                         seen_ids.add(res_id)
@@ -224,8 +224,10 @@ class HybridRetriever:
                     res = batch_map[res_id]
                     final_results.append(
                         models.ScoredPoint(
-                            id=res.id, payload=res.payload,
-                            score=parent_context.score, version=0
+                            id=res.id,
+                            payload=res.payload,
+                            score=parent_context.score,
+                            version=0,
                         )
                     )
                     seen_ids.add(res_id)
@@ -233,13 +235,20 @@ class HybridRetriever:
             return final_results
 
     # Public API — returns LangChain Documents
-    def retrieve(self, query: str) -> List[Document]:
+    def retrieve(
+        self, query: str, expansion_mode="top-1", reorder_mode="parent-first"
+    ) -> List[Document]:
         dense_vec, sparse_vec = self._encode_query(query)
         candidates = self._hybrid_search(dense_vec, sparse_vec)
         ranked = self._rerank(query, candidates)
-        augmented_context = self._link_ref_law(ranked)
+        augmented_context = self._link_ref_law(
+            list_pts=ranked, 
+            expansion_mode=expansion_mode, 
+            reorder_mode=reorder_mode,
+        )
 
         docs = []
+        
         for i, r in enumerate(augmented_context, start=1):
             p = r.payload
             docs.append(

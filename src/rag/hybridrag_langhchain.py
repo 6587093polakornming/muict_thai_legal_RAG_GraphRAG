@@ -200,13 +200,18 @@ class ThaiLegalRAG:
         return answer, docs
 
     # Pipeline Experiement
-    # TODO add logic and parameter to _link_ref_law
-    def hybrid_ref_rag(self, query: str) -> dict:
+    def hybrid_ref_rag(
+        self, query: str, expansion_mode="top-1", reorder_mode="parent-first"
+    ) -> dict:
         start_retrieve = time.perf_counter()
         dense_vec, sparse_vec = self.retriever._encode_query(query)
         candidates = self.retriever._hybrid_search(dense_vec, sparse_vec)
         reranked_pts = self.retriever._rerank(query, candidates)
-        augmented_context = self.retriever._link_ref_law(reranked_pts)
+        augmented_context = self.retriever._link_ref_law(
+            list_pts=reranked_pts,
+            expansion_mode=expansion_mode,
+            reorder_mode=reorder_mode,
+        )
         docs = convert_to_context_doc(augmented_context)
 
         return self._run_rag_pipeline(
@@ -250,13 +255,12 @@ class ThaiLegalRAG:
 
         return self._run_rag_pipeline(query, docs, len(candidates), start_retrieve)
 
-    # TODO Test & Review this
     def sparse_rag(self, query: str) -> dict:
         start_retrieve = time.perf_counter()
-        _ , sparse_vec = self.retriever._encode_query(
+        _, sparse_vec = self.retriever._encode_query(
             query, is_return_dense=False, is_return_sparse=True
         )
         candidates = self.retriever._keyword_search(sparse_vec)
         docs = convert_to_context_doc_custom(candidates)
 
-        return self._run_rag_pipeline(query, docs, len(candidates), start_retrieve)   
+        return self._run_rag_pipeline(query, docs, len(candidates), start_retrieve)
