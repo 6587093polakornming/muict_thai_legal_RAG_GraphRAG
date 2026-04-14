@@ -326,23 +326,52 @@ def evaluate(
 
     # BERTScore vs answer (expert-revised, has reasoning + citation)
     if not skip_bertscore:
-        # Guard: ถ้า predictions หรือ references ว่างทั้งหมด (เช่น mock ทดสอบ retrieval อย่างเดียว)
-        # ให้ข้าม BERTScore และ set None แทน — BERTScore กับ "" อาจ OOM ได้
-        all_preds_empty = all(not p.strip() for p in predictions_rag)
-        all_refs_empty  = all(not r.strip() for r in refs_expert)
-        if all_preds_empty or all_refs_empty:
-            df["bertscore_recall"] = None
-            print("[evaluate] BERTScore skipped — predictions/references ว่างทั้งหมด "
-                  "(mock data สำหรับทดสอบ retrieval เท่านั้น)")
-        else:
-            print(f"[evaluate] computing BERTScore (model={bertscore_model})...")
-            bs_recall = compute_bertscore(
-                predictions=predictions_rag,
-                references=refs_expert,
-                model_type=bertscore_model,
-                batch_size=bertscore_batch,
-            )
-            df["bertscore_recall"] = bs_recall
+        # 1. กรองเฉพาะ Row ที่เป็น String จริงๆ, ไม่ว่าง และไม่ใช่ __ERROR__ (รองรับทุกเคส)
+        valid_indices = []
+        for i, (ans, ref) in enumerate(zip(predictions_rag, refs_expert)):
+            # ตรวจสอบ Prediction: ต้องเป็น str, ไม่ใช่ None, ไม่ใช่ค่าว่าง และไม่ใช่ __ERROR__
+            is_valid_ans = (isinstance(ans, str) and 
+                           ans.strip() != "" and 
+                           ans.strip() != "__ERROR__")
+            
+            # ตรวจสอบ Reference (Ground Truth): ต้องเป็น str และไม่ว่าง
+            is_valid_ref = isinstance(ref, str) and ref.strip() != ""
+            
+            if is_valid_ans and is_valid_ref:
+                valid_indices.append(i)
+        
+        # 2. เตรียม List ผลลัพธ์เริ่มต้นเป็น 0.0 ทั้งหมด
+        bs_recall = [0.0] * len(predictions_rag)
+
+        if valid_indices:
+            print(f"[evaluate] computing BERTScore for {len(valid_indices)} records (Manual Batching)...")
+            
+            sub_preds = [predictions_rag[i] for i in valid_indices]
+            sub_refs = [refs_expert[i] for i in valid_indices]
+            
+            # --- เริ่ม Manual Batching เพื่อป้องกัน OOM ---
+            # ใช้ขนาดเล็กมาก เช่น 2 หรือ 4 สำหรับ GPU 4GB
+            manual_batch_size = 4 
+            all_sub_scores = []
+            
+            for i in tqdm(range(0, len(sub_preds), manual_batch_size), desc="BERTScore Sub-batches"):
+                batch_p = sub_preds[i : i + manual_batch_size]
+                batch_r = sub_refs[i : i + manual_batch_size]
+                
+                batch_scores = compute_bertscore(
+                    predictions=batch_p,
+                    references=batch_r,
+                    model_type=bertscore_model,
+                    batch_size=manual_batch_size, # ส่งเข้า lib อีกที
+                )
+                all_sub_scores.extend(batch_scores)
+            # ------------------------------------------
+            
+            for idx, score in zip(valid_indices, all_sub_scores):
+                bs_recall[idx] = score
+        
+        df["bertscore_recall"] = bs_recall
+        print("[evaluate] BERTScore computation completed (Errors/Empty rows set to 0.0)")
     else:
         df["bertscore_recall"] = None
         print("[evaluate] BERTScore skipped (--skip-bertscore)")
@@ -426,6 +455,10 @@ if __name__ == "__main__":
         all_dfs.append(df)
 
     combined = pd.concat(all_dfs, ignore_index=True)
+    
+    # Handle Backlist for test_dataset_2026-04-01.parquet (typhoon-v2.5-30b context window is not enough)
+    blacklist_ids = [99, 115, 119, 136, 180, 181, 208, 218, 403]
+    combined = combined[~combined["id"].isin(blacklist_ids)]
 
     # Save per-row results
     combined.to_csv(args.output, index=False, encoding="utf-8-sig")
