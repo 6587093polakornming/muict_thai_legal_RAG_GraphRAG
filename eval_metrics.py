@@ -180,18 +180,80 @@ def compute_bertscore(
     Fallback:    microsoft/mdeberta-v3-base (multilingual)
 
     Returns: list of per-sample BERTScore Recall
+
+    Memory management
+    -----------------
+    - ลด batch_size อัตโนมัติเมื่อ CUDA OOM (ลงครึ่งนึงทุกครั้ง จนถึง 1)
+    - เคลียร์ CUDA cache + del scorer หลังใช้งาน เพื่อคืน VRAM
+    - ถ้า GPU ไม่พอจริงๆ จะ fallback ไป CPU โดยอัตโนมัติ
     """
+    import gc
     BERTScorer = _get_bertscore()
-    scorer = BERTScorer(
-        model_type=model_type,
-        num_layers=24,  # เพิ่มบรรทัดนี้เพื่อบอกจำนวน Layer ให้มันรู้
-        lang="th",
-        rescale_with_baseline=False,
-        batch_size=batch_size,
-    )
-    # bert_score returns (Precision, Recall, F1) tensors
-    _, R, _ = scorer.score(cands=predictions, refs=references)
-    return R.tolist()
+
+    # ---- ลอง batch_size ที่กำหนด แล้ว fallback ลงครึ่งนึงถ้า OOM ----
+    current_batch = batch_size
+    scorer = None
+    results = None
+
+    while current_batch >= 1:
+        try:
+            scorer = BERTScorer(
+                model_type=model_type,
+                num_layers=24,
+                lang="th",
+                rescale_with_baseline=False,
+                batch_size=current_batch,
+            )
+            # bert_score returns (Precision, Recall, F1) tensors
+            _, R, _ = scorer.score(cands=predictions, refs=references)
+            results = R.tolist()
+            break  # สำเร็จ — ออกจาก loop
+
+        except RuntimeError as e:
+            if "out of memory" not in str(e).lower():
+                raise  # error อื่นที่ไม่ใช่ OOM — re-raise ทันที
+
+            prev_batch = current_batch
+            current_batch = current_batch // 2
+            print(
+                f"[bertscore] CUDA OOM at batch_size={prev_batch}. "
+                + (f"Retrying with batch_size={current_batch}." if current_batch >= 1
+                   else "Falling back to CPU.")
+            )
+
+        finally:
+            # คืน VRAM ทุกครั้งไม่ว่าจะสำเร็จหรือไม่
+            if scorer is not None:
+                del scorer
+                scorer = None
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+            gc.collect()
+
+    if results is None:
+        # batch_size < 1 — GPU เล็กเกินไป ใช้ CPU แทน
+        print("[bertscore] GPU exhausted. Running BERTScore on CPU (slow but safe).")
+        try:
+            scorer = BERTScorer(
+                model_type=model_type,
+                num_layers=24,
+                lang="th",
+                rescale_with_baseline=False,
+                batch_size=1,
+                device="cpu",
+            )
+            _, R, _ = scorer.score(cands=predictions, refs=references)
+            results = R.tolist()
+        finally:
+            if scorer is not None:
+                del scorer
+            gc.collect()
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -264,14 +326,23 @@ def evaluate(
 
     # BERTScore vs answer (expert-revised, has reasoning + citation)
     if not skip_bertscore:
-        print(f"[evaluate] computing BERTScore (model={bertscore_model})...")
-        bs_recall = compute_bertscore(
-            predictions=predictions_rag,
-            references=refs_expert,
-            model_type=bertscore_model,
-            batch_size=bertscore_batch,
-        )
-        df["bertscore_recall"] = bs_recall
+        # Guard: ถ้า predictions หรือ references ว่างทั้งหมด (เช่น mock ทดสอบ retrieval อย่างเดียว)
+        # ให้ข้าม BERTScore และ set None แทน — BERTScore กับ "" อาจ OOM ได้
+        all_preds_empty = all(not p.strip() for p in predictions_rag)
+        all_refs_empty  = all(not r.strip() for r in refs_expert)
+        if all_preds_empty or all_refs_empty:
+            df["bertscore_recall"] = None
+            print("[evaluate] BERTScore skipped — predictions/references ว่างทั้งหมด "
+                  "(mock data สำหรับทดสอบ retrieval เท่านั้น)")
+        else:
+            print(f"[evaluate] computing BERTScore (model={bertscore_model})...")
+            bs_recall = compute_bertscore(
+                predictions=predictions_rag,
+                references=refs_expert,
+                model_type=bertscore_model,
+                batch_size=bertscore_batch,
+            )
+            df["bertscore_recall"] = bs_recall
     else:
         df["bertscore_recall"] = None
         print("[evaluate] BERTScore skipped (--skip-bertscore)")
@@ -338,7 +409,8 @@ if __name__ == "__main__":
                         default="VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
                         help="HuggingFace model for BERTScore "
                              "(แนะนำ: VISAI-AI/nitibench-ccl-human-finetuned-bge-m3)")
-    parser.add_argument("--bertscore-batch", type=int, default=16)
+    parser.add_argument("--bertscore-batch", type=int, default=4,
+                        help="BERTScore batch size (default=4 สำหรับ GPU 4 GB; ลดลงถ้ายัง OOM)")
     parser.add_argument("--skip-bertscore",  action="store_true",
                         help="Skip BERTScore computation (faster, no GPU needed)")
     args = parser.parse_args()
