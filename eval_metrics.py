@@ -163,97 +163,79 @@ def compute_rouge(
     return r1_scores, rL_scores
 
 
+def build_bertscore_scorer(
+    model_type: str = "VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
+    batch_size: int = 4,
+    device: str | None = None,
+):
+    """
+    Init BERTScorer ครั้งเดียว แล้วเก็บ instance ไว้ใช้ซ้ำได้หลาย batch
+    เรียกใน evaluate() ก่อน loop แล้วส่งเข้า compute_bertscore(scorer=...)
+
+    Parameters
+    ----------
+    model_type  : HuggingFace model ID
+    batch_size  : จำนวน sample ต่อ forward pass (ปรับตาม VRAM)
+    device      : "cuda" / "cpu" / None (auto-detect)
+    """
+    BERTScorer = _get_bertscore()
+    scorer = BERTScorer(
+        model_type=model_type,
+        num_layers=24,
+        lang="th",
+        rescale_with_baseline=False,
+        batch_size=batch_size,
+        device=device,
+    )
+    return scorer
+
+
 def compute_bertscore(
     predictions: list[str],
     references: list[str],
     model_type: str = "VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
-    batch_size: int = 16,
+    batch_size: int = 4,
+    scorer=None,
 ) -> list[float]:
     """
-    Compute BERTScore Recall.
+    Compute BERTScore Recall สำหรับ predictions/references ที่ส่งเข้ามา
 
     วัด semantic coverage ของ expert answer (gt_answer) โดย RAG answer
     ใช้ Recall เพราะต้องการวัดว่า expert answer ถูกครอบคลุมแค่ไหน
 
-    Model แนะนำ: VISAI-AI/nitibench-ccl-human-finetuned-bge-m3
-                 (domain-tuned บน CCL, ตรง domain กับโปรเจกต์)
-    Fallback:    microsoft/mdeberta-v3-base (multilingual)
+    Parameters
+    ----------
+    predictions : list ของ RAG answer
+    references  : list ของ ground-truth answer
+    model_type  : ใช้เมื่อ scorer=None เท่านั้น (fallback สร้างใหม่)
+    batch_size  : ใช้เมื่อ scorer=None เท่านั้น
+    scorer      : BERTScorer instance ที่ init ไว้แล้วจาก build_bertscore_scorer()
+                  ถ้าส่งมา จะ reuse โดยไม่โหลด model ใหม่ (แนะนำใช้กับ manual batch loop)
 
-    Returns: list of per-sample BERTScore Recall
-
-    Memory management
-    -----------------
-    - ลด batch_size อัตโนมัติเมื่อ CUDA OOM (ลงครึ่งนึงทุกครั้ง จนถึง 1)
-    - เคลียร์ CUDA cache + del scorer หลังใช้งาน เพื่อคืน VRAM
-    - ถ้า GPU ไม่พอจริงๆ จะ fallback ไป CPU โดยอัตโนมัติ
+    Returns
+    -------
+    list of per-sample BERTScore Recall
     """
+    # ถ้ามี scorer ที่ init ไว้แล้ว — ใช้เลย ไม่โหลด model ใหม่
+    if scorer is not None:
+        _, R, _ = scorer.score(cands=predictions, refs=references)
+        return R.tolist()
+
+    # fallback: สร้าง scorer ชั่วคราว (กรณีเรียก standalone ไม่ผ่าน evaluate)
     import gc
-    BERTScorer = _get_bertscore()
-
-    # ---- ลอง batch_size ที่กำหนด แล้ว fallback ลงครึ่งนึงถ้า OOM ----
-    current_batch = batch_size
-    scorer = None
-    results = None
-
-    while current_batch >= 1:
+    tmp_scorer = build_bertscore_scorer(model_type=model_type, batch_size=batch_size)
+    try:
+        _, R, _ = tmp_scorer.score(cands=predictions, refs=references)
+        return R.tolist()
+    finally:
+        del tmp_scorer
         try:
-            scorer = BERTScorer(
-                model_type=model_type,
-                num_layers=24,
-                lang="th",
-                rescale_with_baseline=False,
-                batch_size=current_batch,
-            )
-            # bert_score returns (Precision, Recall, F1) tensors
-            _, R, _ = scorer.score(cands=predictions, refs=references)
-            results = R.tolist()
-            break  # สำเร็จ — ออกจาก loop
-
-        except RuntimeError as e:
-            if "out of memory" not in str(e).lower():
-                raise  # error อื่นที่ไม่ใช่ OOM — re-raise ทันที
-
-            prev_batch = current_batch
-            current_batch = current_batch // 2
-            print(
-                f"[bertscore] CUDA OOM at batch_size={prev_batch}. "
-                + (f"Retrying with batch_size={current_batch}." if current_batch >= 1
-                   else "Falling back to CPU.")
-            )
-
-        finally:
-            # คืน VRAM ทุกครั้งไม่ว่าจะสำเร็จหรือไม่
-            if scorer is not None:
-                del scorer
-                scorer = None
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except ImportError:
-                pass
-            gc.collect()
-
-    if results is None:
-        # batch_size < 1 — GPU เล็กเกินไป ใช้ CPU แทน
-        print("[bertscore] GPU exhausted. Running BERTScore on CPU (slow but safe).")
-        try:
-            scorer = BERTScorer(
-                model_type=model_type,
-                num_layers=24,
-                lang="th",
-                rescale_with_baseline=False,
-                batch_size=1,
-                device="cpu",
-            )
-            _, R, _ = scorer.score(cands=predictions, refs=references)
-            results = R.tolist()
-        finally:
-            if scorer is not None:
-                del scorer
-            gc.collect()
-
-    return results
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+        gc.collect()
 
 
 # ---------------------------------------------------------------------------
@@ -345,28 +327,42 @@ def evaluate(
 
         if valid_indices:
             print(f"[evaluate] computing BERTScore for {len(valid_indices)} records (Manual Batching)...")
-            
+
             sub_preds = [predictions_rag[i] for i in valid_indices]
-            sub_refs = [refs_expert[i] for i in valid_indices]
-            
-            # --- เริ่ม Manual Batching เพื่อป้องกัน OOM ---
-            # ใช้ขนาดเล็กมาก เช่น 2 หรือ 4 สำหรับ GPU 4GB
-            manual_batch_size = 4 
-            all_sub_scores = []
-            
-            for i in tqdm(range(0, len(sub_preds), manual_batch_size), desc="BERTScore Sub-batches"):
-                batch_p = sub_preds[i : i + manual_batch_size]
-                batch_r = sub_refs[i : i + manual_batch_size]
-                
-                batch_scores = compute_bertscore(
-                    predictions=batch_p,
-                    references=batch_r,
-                    model_type=bertscore_model,
-                    batch_size=manual_batch_size, # ส่งเข้า lib อีกที
-                )
-                all_sub_scores.extend(batch_scores)
-            # ------------------------------------------
-            
+            sub_refs  = [refs_expert[i]     for i in valid_indices]
+
+            manual_batch_size = bertscore_batch
+            all_sub_scores    = []
+
+            # --- Init model ครั้งเดียวก่อน loop — ไม่โหลดซ้ำทุก batch ---
+            import gc
+            bert_scorer = build_bertscore_scorer(
+                model_type=bertscore_model,
+                batch_size=manual_batch_size,
+            )
+            try:
+                for i in tqdm(range(0, len(sub_preds), manual_batch_size), desc="BERTScore Sub-batches"):
+                    batch_p = sub_preds[i : i + manual_batch_size]
+                    batch_r = sub_refs [i : i + manual_batch_size]
+
+                    batch_scores = compute_bertscore(
+                        predictions=batch_p,
+                        references=batch_r,
+                        scorer=bert_scorer,   # reuse — ไม่โหลด model ใหม่
+                    )
+                    all_sub_scores.extend(batch_scores)
+            finally:
+                # คืน VRAM หลัง loop เสร็จทั้งหมด
+                del bert_scorer
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except ImportError:
+                    pass
+                gc.collect()
+            # ---------------------------------------------------------------
+
             for idx, score in zip(valid_indices, all_sub_scores):
                 bs_recall[idx] = score
         
