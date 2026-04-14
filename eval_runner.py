@@ -73,7 +73,7 @@ def _build_llm() -> ChatOpenAI:
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_api_base="https://api.opentyphoon.ai/v1",
         temperature=0,
-        max_tokens=23000,
+        max_tokens=24000,
     )
 
 
@@ -260,7 +260,7 @@ class GraphRAGAdapter(RAGAdapter):
             openai_api_key=os.getenv("thai_llm_API_key"),
             openai_api_base="https://api.opentyphoon.ai/v1",
             temperature=0,
-            max_tokens=23000,
+            max_tokens=24000,
         )
         self.retriever = GraphRAGRetriever(llm=llm, top_k=3)
 
