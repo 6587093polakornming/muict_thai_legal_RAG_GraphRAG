@@ -426,9 +426,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute RAG evaluation metrics")
     parser.add_argument("--input",   nargs="+", required=True,
                         help="One or more JSONL result files")
-    parser.add_argument("--output",  default="data/evaluation/eval_results.csv",
+    parser.add_argument("--output",  default=None,
                         help="Path to save per-row results CSV")
-    parser.add_argument("--summary", default="data/evaluation/eval_summary.csv",
+    parser.add_argument("--summary", default=None,
                         help="Path to save aggregated summary CSV")
     parser.add_argument("--bertscore-model",
                         default="VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
@@ -439,6 +439,17 @@ if __name__ == "__main__":
     parser.add_argument("--skip-bertscore",  action="store_true",
                         help="Skip BERTScore computation (faster, no GPU needed)")
     args = parser.parse_args()
+
+    # Dynamic Output File
+    # data/evaluation/eval_<filename>results.csv
+    input_names = "_".join([Path(p).stem for p in args.input])
+    # ถ้าผู้ใช้ไม่ระบุ --output ให้ใช้ชื่อตาม input
+    if args.output is None:
+        args.output = f"data/evaluation/eval_{input_names}_results.csv"
+        
+    # ถ้าผู้ใช้ไม่ระบุ --summary ให้ใช้ชื่อตาม input
+    if args.summary is None:
+        args.summary = f"data/evaluation/eval_{input_names}_summary.csv"
 
     all_dfs = []
     for path in args.input:

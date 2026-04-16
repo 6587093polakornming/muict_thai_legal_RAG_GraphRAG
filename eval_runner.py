@@ -78,7 +78,7 @@ def _build_llm() -> ChatOpenAI:
 
 
 def _build_config() -> RAGConfig:
-    return RAGConfig(retrieval_limit=1, reranking_limit=1)
+    return RAGConfig(retrieval_limit=2, reranking_limit=2)
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +262,7 @@ class GraphRAGAdapter(RAGAdapter):
             temperature=0,
             max_tokens=24000,
         )
-        self.retriever = GraphRAGRetriever(llm=llm, top_k=1)
+        self.retriever = GraphRAGRetriever(llm=llm, top_k=2)
 
     def debug(self, query: str):
         results = self.retriever.debug(query=query)
