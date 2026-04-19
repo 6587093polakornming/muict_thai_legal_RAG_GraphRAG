@@ -78,7 +78,7 @@ def _build_llm() -> ChatOpenAI:
 
 
 def _build_config() -> RAGConfig:
-    return RAGConfig(retrieval_limit=2, reranking_limit=2)
+    return RAGConfig(retrieval_limit=3, reranking_limit=3)
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +262,7 @@ class GraphRAGAdapter(RAGAdapter):
             temperature=0,
             max_tokens=24000,
         )
-        self.retriever = GraphRAGRetriever(llm=llm, top_k=2)
+        self.retriever = GraphRAGRetriever(llm=llm, top_k=3)
 
     def debug(self, query: str):
         results = self.retriever.debug(query=query)
@@ -309,37 +309,18 @@ ADAPTER_REGISTRY: dict[str, RAGAdapter] = {
 
 
 def _serialise_docs(docs) -> list[dict]:
-    """
-    Extract only metadata fields needed for metric computation.
-    Avoids storing full page_content.
-    """
     result = []
     seen_law = set()
-
     for doc in docs:
         meta = doc.metadata if hasattr(doc, "metadata") else {}
-
         law_name = meta.get("law_name", "")
         section_num = str(meta.get("section_num", ""))
         key = (law_name, section_num)
-
         if key in seen_law:
             continue
         seen_law.add(key)
         result.append({"law_name": law_name, "section_num": section_num})
-
-        for ref in meta.get("reference_laws", []):
-            ref_key = (ref.get("law_name", ""), str(ref.get("section_num", "")))
-            if ref_key in seen_law:
-                continue
-            seen_law.add(ref_key)
-            result.append(
-                {
-                    "law_name": ref.get("law_name", ""),
-                    "section_num": str(ref.get("section_num", "")),
-                }
-            )
-
+        # ไม่ expand reference_laws จาก metadata
     return result
 
 
