@@ -255,7 +255,7 @@ def _mean(values: list) -> float | None:
 def evaluate(
     jsonl_path: str,
     bertscore_model: str = "VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
-    bertscore_batch: int = 16,
+    bertscore_batch: int = 32,
     skip_bertscore: bool = False,
 ) -> pd.DataFrame:
     """
@@ -434,7 +434,7 @@ if __name__ == "__main__":
                         default="VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
                         help="HuggingFace model for BERTScore "
                              "(แนะนำ: VISAI-AI/nitibench-ccl-human-finetuned-bge-m3)")
-    parser.add_argument("--bertscore-batch", type=int, default=4,
+    parser.add_argument("--bertscore-batch", type=int, default=32,
                         help="BERTScore batch size (default=4 สำหรับ GPU 4 GB; ลดลงถ้ายัง OOM)")
     parser.add_argument("--skip-bertscore",  action="store_true",
                         help="Skip BERTScore computation (faster, no GPU needed)")
@@ -445,11 +445,11 @@ if __name__ == "__main__":
     input_names = "_".join([Path(p).stem for p in args.input])
     # ถ้าผู้ใช้ไม่ระบุ --output ให้ใช้ชื่อตาม input
     if args.output is None:
-        args.output = f"data/evaluation/eval_{input_names}_results.csv"
+        args.output = f"data/evaluation/{input_names}_results.csv"
         
     # ถ้าผู้ใช้ไม่ระบุ --summary ให้ใช้ชื่อตาม input
     if args.summary is None:
-        args.summary = f"data/evaluation/eval_{input_names}_summary.csv"
+        args.summary = f"data/evaluation/{input_names}_summary.csv"
 
     all_dfs = []
     for path in args.input:
