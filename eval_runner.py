@@ -5,8 +5,8 @@ Step 1 — Run RAG system against test dataset and save results to JSONL.
 
 Usage:
     # Retrieval only (no LLM) — experiment expansion_mode
-    python eval_runner.py --system retrieval_top1
-    python eval_runner.py --system retrieval_topn
+    python eval_runner.py --system expansion_top1
+    python eval_runner.py --system expansion_topn
 
     # Full pipeline experiments
     python eval_runner.py --system vector_rag
@@ -29,8 +29,8 @@ Features:
 Experiment Variants:
     System Name         Pipeline
     ------------------- ----------------------------------------------------------
-    retrieval_top1      hybrid + rerank + ref(top-1)  — retrieval only, no LLM
-    retrieval_topn      hybrid + rerank + ref(top-n)  — retrieval only, no LLM
+    expansion_top1      hybrid + rerank + ref(top-1)  — retrieval only, no LLM
+    expansion_topn      hybrid + rerank + ref(top-n)  — retrieval only, no LLM
     vector_rag          dense vector search            — full pipeline
     sparse_rag          sparse keyword search          — full pipeline
     hybrid_rag          hybrid RRF fusion              — full pipeline
@@ -60,6 +60,8 @@ from src.rag.config import RAGConfig
 from src.rag.hybrid_retriever import HybridRetriever
 
 load_dotenv()
+_TOPK = 3
+MAX_TOKEN = 24000
 
 # ---------------------------------------------------------------------------
 # LLM / Model factory — shared across adapters เพื่อไม่โหลด model ซ้ำ
@@ -73,12 +75,12 @@ def _build_llm() -> ChatOpenAI:
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_api_base="https://api.opentyphoon.ai/v1",
         temperature=0,
-        max_tokens=28000,
+        max_tokens=MAX_TOKEN,
     )
 
 
 def _build_config() -> RAGConfig:
-    return RAGConfig(retrieval_limit=3, reranking_limit=3)
+    return RAGConfig(retrieval_limit=_TOPK, reranking_limit=_TOPK)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +116,7 @@ class RetrievalOnlyHybridAdapter(RAGAdapter):
     def __init__(
         self, expansion_mode: str = "top-1", reorder_mode: str = "parent-first"
     ):
-        self.name = f"retrieval_{expansion_mode.replace('-', '')}"  # retrieval_top1 / retrieval_topn
+        self.name = f"expansion_{expansion_mode.replace('-', '')}"  # expansion_top1 / expansion_topn
         self.expansion_mode = expansion_mode
         self.reorder_mode = reorder_mode
 
@@ -260,9 +262,9 @@ class GraphRAGAdapter(RAGAdapter):
             openai_api_key=os.getenv("thai_llm_API_key"),
             openai_api_base="https://api.opentyphoon.ai/v1",
             temperature=0,
-            max_tokens=28000,
+            max_tokens=MAX_TOKEN,
         )
-        self.retriever = GraphRAGRetriever(llm=llm, top_k=3)
+        self.retriever = GraphRAGRetriever(llm=llm, top_k=_TOPK)
 
     def debug(self, query: str):
         results = self.retriever.debug(query=query)
@@ -281,8 +283,8 @@ class GraphRAGAdapter(RAGAdapter):
 # TODO [] เพิ่ม entry ใหม่ตรงนี้เมื่อมี adapter เพิ่ม
 ADAPTER_REGISTRY: dict[str, RAGAdapter] = {
     # Retrieval only
-    "retrieval_top1": lambda: RetrievalOnlyHybridAdapter(expansion_mode="top-1"),
-    "retrieval_topn": lambda: RetrievalOnlyHybridAdapter(expansion_mode="top-n"),
+    "expansion_top1": lambda: RetrievalOnlyHybridAdapter(expansion_mode="top-1"),
+    "expansion_topn": lambda: RetrievalOnlyHybridAdapter(expansion_mode="top-n"),
     # Full pipeline
     "vector_rag": lambda: VectorRAGAdapter(),
     "sparse_rag": lambda: SparseRAGAdapter(),
@@ -309,37 +311,18 @@ ADAPTER_REGISTRY: dict[str, RAGAdapter] = {
 
 
 def _serialise_docs(docs) -> list[dict]:
-    """
-    Extract only metadata fields needed for metric computation.
-    Avoids storing full page_content.
-    """
     result = []
     seen_law = set()
-
     for doc in docs:
         meta = doc.metadata if hasattr(doc, "metadata") else {}
-
         law_name = meta.get("law_name", "")
         section_num = str(meta.get("section_num", ""))
         key = (law_name, section_num)
-
         if key in seen_law:
             continue
         seen_law.add(key)
         result.append({"law_name": law_name, "section_num": section_num})
-
-        for ref in meta.get("reference_laws", []):
-            ref_key = (ref.get("law_name", ""), str(ref.get("section_num", "")))
-            if ref_key in seen_law:
-                continue
-            seen_law.add(ref_key)
-            result.append(
-                {
-                    "law_name": ref.get("law_name", ""),
-                    "section_num": str(ref.get("section_num", "")),
-                }
-            )
-
+        # ไม่ expand reference_laws จาก metadata
     return result
 
 
@@ -439,8 +422,8 @@ if __name__ == "__main__":
         required=True,
         help=(
             "Experiment system to run:\n"
-            "  retrieval_top1  — hybrid+rerank+ref(top-1), retrieval only\n"
-            "  retrieval_topn  — hybrid+rerank+ref(top-n), retrieval only\n"
+            "  expansion_top1  — hybrid+rerank+ref(top-1), retrieval only\n"
+            "  expansion_topn  — hybrid+rerank+ref(top-n), retrieval only\n"
             "  vector_rag      — dense vector, full pipeline\n"
             "  sparse_rag      — sparse keyword, full pipeline\n"
             "  hybrid_rag      — hybrid RRF, full pipeline\n"
@@ -459,7 +442,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         default=None,
-        help="Output JSONL path (default: data/evaluation/results_{system}.jsonl)",
+        help="Output JSONL path (default: data/evaluation/{system}.jsonl)",
     )
     parser.add_argument(
         "--sleep",
@@ -470,7 +453,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.output is None:
-        args.output = f"data/evaluation/results_{args.system}.jsonl"
+        args.output = f"data/evaluation/{args.system}_topk{_TOPK}.jsonl"
 
     adapter = ADAPTER_REGISTRY[args.system]()
 
@@ -481,10 +464,3 @@ if __name__ == "__main__":
         sleep_sec=args.sleep,
     )
 
-    # # Retrieval only
-    # python eval_runner.py --system retrieval_top1
-    # python eval_runner.py --system retrieval_topn
-
-    # # Full pipeline ทั้งหมด
-    # python eval_runner.py --system vector_rag
-    # python eval_runner.py --system hybrid_ref_top1
