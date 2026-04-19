@@ -60,6 +60,7 @@ from src.rag.config import RAGConfig
 from src.rag.hybrid_retriever import HybridRetriever
 
 load_dotenv()
+_TOPK = 3
 
 # ---------------------------------------------------------------------------
 # LLM / Model factory — shared across adapters เพื่อไม่โหลด model ซ้ำ
@@ -78,7 +79,7 @@ def _build_llm() -> ChatOpenAI:
 
 
 def _build_config() -> RAGConfig:
-    return RAGConfig(retrieval_limit=3, reranking_limit=3)
+    return RAGConfig(retrieval_limit=_TOPK, reranking_limit=_TOPK)
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +263,7 @@ class GraphRAGAdapter(RAGAdapter):
             temperature=0,
             max_tokens=24000,
         )
-        self.retriever = GraphRAGRetriever(llm=llm, top_k=3)
+        self.retriever = GraphRAGRetriever(llm=llm, top_k=_TOPK)
 
     def debug(self, query: str):
         results = self.retriever.debug(query=query)
@@ -451,7 +452,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.output is None:
-        args.output = f"data/evaluation/results_{args.system}.jsonl"
+        args.output = f"data/evaluation/results_{args.system}_topk{_TOPK}.jsonl"
 
     adapter = ADAPTER_REGISTRY[args.system]()
 
