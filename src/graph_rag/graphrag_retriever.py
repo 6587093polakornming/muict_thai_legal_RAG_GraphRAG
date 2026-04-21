@@ -93,6 +93,7 @@ class GraphRAGRetriever:
             record = context.records[i]
             content = record.data().get("content", "")
             metadata = record.data().get("metadata", {})
+            reference_laws = metadata.get("children", [])
             docs.append(
                 Document(
                     page_content=content,
@@ -104,6 +105,19 @@ class GraphRAGRetriever:
                     }
                 )
             )
+            # Append each reference law as a separate Document with the same metadata
+            for ref_law in reference_laws:
+                ref_content = ref_law.get("content", "")
+                docs.append(
+                    Document(
+                        page_content=ref_content,
+                        metadata={
+                            "law_name": ref_law.get("law_name", metadata.get("parent_law_name", "")),
+                            "section_num": ref_law.get("section_num", metadata.get("parent_section_num", "")),
+                            "reference_laws": [],
+                        }
+                    )
+                )
             # print(docs)
         return docs
 
