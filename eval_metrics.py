@@ -255,7 +255,7 @@ def _mean(values: list) -> float | None:
 def evaluate(
     jsonl_path: str,
     bertscore_model: str = "VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
-    bertscore_batch: int = 32,
+    bertscore_batch: int = 16,
     skip_bertscore: bool = False,
 ) -> pd.DataFrame:
     """
@@ -434,7 +434,7 @@ if __name__ == "__main__":
                         default="VISAI-AI/nitibench-ccl-human-finetuned-bge-m3",
                         help="HuggingFace model for BERTScore "
                              "(แนะนำ: VISAI-AI/nitibench-ccl-human-finetuned-bge-m3)")
-    parser.add_argument("--bertscore-batch", type=int, default=32,
+    parser.add_argument("--bertscore-batch", type=int, default=4,
                         help="BERTScore batch size (default=4 สำหรับ GPU 4 GB; ลดลงถ้ายัง OOM)")
     parser.add_argument("--skip-bertscore",  action="store_true",
                         help="Skip BERTScore computation (faster, no GPU needed)")

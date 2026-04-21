@@ -1,0 +1,2 @@
+﻿system,n,hit_rate,multi_hit_rate,recall,mrr,rouge1_recall,rougeL_recall,bertscore_recall,prompt_tokens,completion_tokens,total_tokens,retrieve_time,llm_time,total_elapsed
+expansion_top1,488,0.8934426229508197,0.7336065573770492,0.803249251886547,0.7310450819672131,0.0,0.0,0.0,0.0,0.0,0.0,1.9423385057384845,0.0,1.9423385057384845

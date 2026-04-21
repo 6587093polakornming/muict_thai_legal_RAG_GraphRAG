@@ -60,7 +60,7 @@ from src.rag.config import RAGConfig
 from src.rag.hybrid_retriever import HybridRetriever
 
 load_dotenv()
-_TOPK = 3
+_TOPK = 1
 MAX_TOKEN = 24000
 
 # ---------------------------------------------------------------------------
