@@ -23,6 +23,7 @@ dependencies = [
     "qdrant-client>=1.17.1",
     "rouge-score>=0.1.2",
     "scikit-learn==1.6.1",
+    "streamlit>=1.56.0",
     "torch>=2.4.0",
     "torchvision>=0.19.0,<0.26.0",
     "transformers>=4.44.2,<4.49.0",
